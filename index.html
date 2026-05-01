@@ -142,6 +142,9 @@ input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
 .acct-bal{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;}
 .acct-init{font-size:11px;color:var(--text3);margin-top:1px;}
 
+/* SPIN ANIMATION */
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+
 /* SYNC STATUS */
 .sync-bar{position:fixed;top:var(--nav-h);left:50%;transform:translateX(-50%);width:100%;max-width:430px;z-index:99;padding:0;overflow:hidden;height:0;transition:height .25s;}
 .sync-bar.show{height:28px;}
@@ -298,8 +301,16 @@ select:focus{border-color:var(--accent);}
 <!-- BALANCE PAGE -->
 <div class="page" id="page-balance">
   <div class="header">
-    <div class="header-title">账户余额</div>
-    <div class="header-sub">实时余额统计</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div class="header-title">账户余额</div>
+        <div class="header-sub">实时余额统计</div>
+      </div>
+      <button onclick="refreshData()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:5px;font-size:12px;" title="刷新同步">
+        <svg id="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        刷新
+      </button>
+    </div>
   </div>
   <div id="balance-content"></div>
   <button class="btn btn-primary" style="margin-bottom:14px;" onclick="openTxModal()">
@@ -361,6 +372,27 @@ select:focus{border-color:var(--accent);}
   </div>
 </div>
 
+<!-- EDIT RECORD MODAL -->
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <div class="modal-title">编辑记录 <button class="modal-close" onclick="closeModal('edit-modal')">×</button></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">日期</label><input type="date" id="edit-date"></div>
+      <div class="form-group"><label class="form-label">时间</label><input type="time" id="edit-time"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">各店铺金额（IDR）</label>
+      <div id="edit-store-inputs"></div>
+    </div>
+    <div class="total-bar" style="margin-bottom:14px;">
+      <span class="total-label">合计</span>
+      <span class="total-value" id="edit-total">0</span>
+      <span class="total-unit">IDR</span>
+    </div>
+    <button class="btn btn-primary" style="width:100%;" onclick="saveEdit()">保存修改</button>
+  </div>
+</div>
+
 
 </div>
 
@@ -403,7 +435,7 @@ function saveState(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
     setSyncStatus('saving','同步中...');
-    db.ref('appdata').set({stores,data,accounts,txs,_t:Date.now()})
+    db.ref('appdata').set({stores,data,accounts,txs:txs||[],_t:Date.now()})
       .then(()=>setSyncStatus('ok','✓ 已同步'))
       .catch(e=>setSyncStatus('red','同步失败'));
   }, 600);
@@ -432,7 +464,7 @@ function initFirebase(){
         });
         data.sort((a,b)=>b.date.localeCompare(a.date));
       }
-      if(remote.txs && remote.txs.length) txs = remote.txs;
+      if(remote.txs) txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
     }
     fbReady = true;
     setSyncStatus('ok','✓ 已连接');
@@ -664,11 +696,12 @@ function renderHome(){
   // also include non-configured stores
   monthly.forEach(d=>Object.keys(d.stores).forEach(s=>{if(!(s in st))st[s]=0;st[s]+=(d.stores[s]||0);}));
   const allStores=Object.keys(st).filter(s=>st[s]>0).sort((a,b)=>st[b]-st[a]);
+  const stTotal=allStores.reduce((s,k)=>s+st[k],0); // use actual store sum as denominator
   const sc=document.getElementById('home-stores');
   if(!allStores.length){sc.innerHTML='<div class="empty">本月暂无数据</div>';}
   else sc.innerHTML=allStores.map((s,xi)=>{
     const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:xi+stores.length);
-    const pct=total?(st[s]/total*100):0;
+    const pct=stTotal?(st[s]/stTotal*100):0;
     return`<div class="store-row"><div style="flex:1;min-width:0;">
       <div style="font-size:13px;font-weight:600;color:${c}">${s}</div>
       <div class="bar-wrap"><div class="bar-fill" style="width:${pct.toFixed(0)}%;background:${c}"></div></div>
@@ -709,7 +742,10 @@ function renderRecords(){
       return`<div class="rec-item"><div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div><div style="font-size:12px;color:var(--text2);">${d.date} ${d.time||''}</div>
         <div style="font-size:16px;font-weight:700;margin-top:2px;">${fmtFull(d.total)}</div></div>
-        <button class="btn btn-danger btn-sm" onclick="delRec('${d.date}')">删除</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm" style="font-size:11px;padding:4px 10px;" onclick="openEditModal('${d.date}')">编辑</button>
+          <button class="btn btn-danger btn-sm" onclick="delRec('${d.date}')">删除</button>
+        </div>
       </div><div class="rec-tags">${ss.slice(0,4).map(([s,v])=>{
         const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:8);
         return`<span class="tag" style="color:${c};border-color:${c}40;background:${c}12;">${s} ${d.total?(v/d.total*100).toFixed(0):0}%</span>`;
@@ -719,6 +755,62 @@ function renderRecords(){
 function delRec(date){
   if(!confirm('确认删除 '+date+' 的记录？'))return;
   data=data.filter(d=>d.date!==date);saveState();renderRecords();renderHome();toast('已删除');
+}
+
+// ─── EDIT RECORD ─────────────────────────────────
+let editingDate = null;
+
+function openEditModal(date){
+  const rec = data.find(d=>d.date===date);
+  if(!rec){toast('⚠ 记录不存在');return;}
+  editingDate = date;
+  document.getElementById('edit-date').value = rec.date;
+  document.getElementById('edit-time').value = rec.time||'';
+  // Build store inputs
+  const cont = document.getElementById('edit-store-inputs');
+  cont.innerHTML = stores.map(s=>`
+    <div class="store-row">
+      <label class="store-label">${s}</label>
+      <input type="number" class="store-input" data-store="${s}" value="${rec.stores[s]||0}" min="0"
+        oninput="updateEditTotal()">
+    </div>`).join('');
+  updateEditTotal();
+  openModal('edit-modal');
+}
+
+function updateEditTotal(){
+  const inputs = document.querySelectorAll('#edit-store-inputs .store-input');
+  const total = [...inputs].reduce((s,i)=>s+(parseInt(i.value)||0),0);
+  document.getElementById('edit-total').textContent = fmtFull(total);
+}
+
+function saveEdit(){
+  const date = document.getElementById('edit-date').value;
+  const time = document.getElementById('edit-time').value;
+  if(!date){toast('⚠ 请填写日期');return;}
+  const inputs = document.querySelectorAll('#edit-store-inputs .store-input');
+  const newStores = {};
+  inputs.forEach(i=>{const v=parseInt(i.value)||0;if(v>0)newStores[i.dataset.store]=v;});
+  const total = Object.values(newStores).reduce((s,v)=>s+v,0);
+  // Remove old record (may have changed date)
+  data = data.filter(d=>d.date!==editingDate);
+  // Find if new date already exists
+  const existIdx = data.findIndex(d=>d.date===date);
+  if(existIdx>=0){
+    // Merge stores into existing record
+    Object.entries(newStores).forEach(([s,v])=>{data[existIdx].stores[s]=v;});
+    data[existIdx].total = Object.values(data[existIdx].stores).reduce((s,v)=>s+v,0);
+    data[existIdx].time = time;
+  } else {
+    data.push({date,time,stores:newStores,total});
+  }
+  data.sort((a,b)=>b.date.localeCompare(a.date));
+  saveState();
+  closeModal('edit-modal');
+  renderRecords();
+  renderHome();
+  renderBalance();
+  toast('✓ 记录已更新');
 }
 
 // ─── BALANCE ─────────────────────────────────────
@@ -1139,6 +1231,41 @@ function acctTxOut(acctId){
 }
 function acctTxIn(acctId){
   return txs.filter(t=>t.acctId===acctId&&t.type==='in').reduce((s,t)=>s+t.amount,0);
+}
+
+// ─── REFRESH ─────────────────────────────────────
+function refreshData(){
+  const icon = document.getElementById('refresh-icon');
+  if(icon) icon.style.animation='spin 0.8s linear infinite';
+  setSyncStatus('saving','刷新中...');
+  db.ref('appdata').once('value').then(snap=>{
+    const remote = snap.val();
+    if(remote){
+      if(remote.stores && remote.stores.length) stores = remote.stores;
+      if(remote.accounts && remote.accounts.length){
+        accounts = remote.accounts;
+        accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
+      }
+      if(remote.data && remote.data.length){
+        data = [...HISTORY];
+        remote.data.forEach(r=>{
+          const i=data.findIndex(d=>d.date===r.date);
+          if(i>=0)data[i]=r; else data.push(r);
+        });
+        data.sort((a,b)=>b.date.localeCompare(a.date));
+      }
+      if(remote.txs) txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
+      saveLocalBackup(); saveTxsLocal();
+    }
+    if(icon) icon.style.animation='';
+    setSyncStatus('ok','✓ 已刷新');
+    renderBalance(); renderHome(); buildStoreInputs();
+    toast('✓ 数据已刷新');
+  }).catch(e=>{
+    if(icon) icon.style.animation='';
+    setSyncStatus('red','刷新失败');
+    toast('⚠ 刷新失败，请检查网络');
+  });
 }
 
 // ─── INIT ─────────────────────────────────────────
