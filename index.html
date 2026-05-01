@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="提款记录">
+<title>提款记录管理</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<!-- SheetJS for Excel import/export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#181b24;--bg3:#1e2130;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.13);
+  --text:#f0f2f8;--text2:#8b91a8;--text3:#555b72;
+  --accent:#4f8ef7;--accent2:#3a7aee;
+  --green:#34c984;--red:#f05a5a;--orange:#f0a040;
+  --radius:14px;--radius-sm:8px;--nav-h:64px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+.app{max-width:430px;margin:0 auto;min-height:100vh;padding-top:calc(var(--nav-h) + env(safe-area-inset-top));padding-bottom:24px;}
+
+/* HEADER */
+.header{padding:20px 20px 14px;background:linear-gradient(180deg,var(--bg2) 0%,transparent 100%);}
+.header-title{font-size:22px;font-weight:700;letter-spacing:-0.5px;}
+.header-sub{font-size:13px;color:var(--text2);margin-top:3px;}
+
+/* NAV */
+.nav{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:var(--nav-h);background:rgba(24,27,36,0.94);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;z-index:100;padding-top:env(safe-area-inset-top);}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;font-weight:600;letter-spacing:0.3px;color:var(--text3);background:none;border:none;cursor:pointer;transition:color .2s;}
+.nav-btn.active{color:var(--accent);}
+.nav-btn svg{width:22px;height:22px;}
+
+/* PAGES */
+.page{display:none;padding:0 16px 20px;}
+.page.active{display:block;}
+
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px;}
+.card-title{font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:var(--text3);margin-bottom:14px;}
+
+/* METRICS */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+.metric{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;}
+.metric-label{font-size:11px;color:var(--text2);margin-bottom:5px;}
+.metric-value{font-size:19px;font-weight:700;color:var(--text);}
+.metric-unit{font-size:10px;color:var(--text3);margin-top:2px;}
+.metric.accent{border-color:rgba(79,142,247,0.3);background:rgba(79,142,247,0.08);}
+.metric.accent .metric-value{color:var(--accent);}
+.metric.green{border-color:rgba(52,201,132,0.3);background:rgba(52,201,132,0.08);}
+.metric.green .metric-value{color:var(--green);}
+
+/* STORE ROWS */
+.store-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);}
+.store-row:last-child{border-bottom:none;}
+.bar-wrap{width:100%;height:3px;background:var(--bg3);border-radius:2px;margin-top:4px;}
+.bar-fill{height:3px;border-radius:2px;}
+
+/* RECORD ITEMS */
+.rec-item{padding:11px 0;border-bottom:1px solid var(--border);}
+.rec-item:last-child{border-bottom:none;}
+.rec-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+.tag{font-size:10px;padding:2px 8px;border-radius:99px;font-weight:600;border:1px solid;}
+
+/* FORM */
+.form-group{margin-bottom:14px;}
+.form-label{font-size:11px;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--text2);margin-bottom:8px;display:block;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+input[type="date"],input[type="time"],input[type="number"],input[type="text"]{
+  width:100%;background:var(--bg3);border:1px solid var(--border2);
+  border-radius:var(--radius-sm);color:var(--text);
+  font-size:14px;padding:10px 12px;outline:none;-webkit-appearance:none;
+  transition:border-color .2s;font-family:inherit;
+}
+input:focus{border-color:var(--accent);}
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+.si-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.si-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.si-label{font-size:12px;color:var(--text2);width:108px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.si-input{flex:1;}
+.si-input input{font-size:13px;padding:8px 10px;}
+.total-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid var(--border2);margin-top:4px;}
+.total-label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text2);}
+.total-value{font-size:18px;font-weight:700;color:var(--accent);}
+
+/* BUTTONS */
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 16px;font-size:13px;font-weight:600;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text);cursor:pointer;font-family:inherit;transition:all .15s;}
+.btn:active{transform:scale(0.97);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;width:100%;padding:14px;font-size:15px;}
+.btn-primary:active{background:var(--accent2);}
+.btn-sm{padding:5px 12px;font-size:11px;}
+.btn-danger{border-color:rgba(240,90,90,0.4);color:var(--red);background:rgba(240,90,90,0.08);}
+.btn-green{border-color:rgba(52,201,132,0.4);color:var(--green);background:rgba(52,201,132,0.08);}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+
+/* MONTH TABS */
+.month-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:14px;scrollbar-width:none;}
+.month-tabs::-webkit-scrollbar{display:none;}
+.m-tab{flex-shrink:0;padding:6px 14px;font-size:12px;font-weight:600;border:1px solid var(--border2);border-radius:99px;cursor:pointer;background:transparent;color:var(--text2);font-family:inherit;transition:all .15s;}
+.m-tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+/* TOAST */
+.toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(10px);background:#232736;color:var(--text);font-size:13px;font-weight:600;padding:10px 20px;border-radius:99px;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;z-index:200;white-space:nowrap;border:1px solid var(--border2);box-shadow:0 4px 20px rgba(0,0,0,.4);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);z-index:300;display:none;align-items:flex-end;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius) var(--radius) 0 0;padding:20px;width:100%;max-width:430px;max-height:80vh;overflow-y:auto;}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:16px;}
+.modal-close{float:right;background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;margin-top:-4px;}
+
+/* STORE MANAGE */
+.store-manage-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.store-manage-row:last-child{border-bottom:none;}
+.store-color-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+.store-manage-name{flex:1;font-size:13px;}
+.divider{height:1px;background:var(--border);margin:12px 0;}
+.empty{text-align:center;padding:36px 0;color:var(--text3);font-size:13px;}
+.section-label{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text3);margin:18px 0 10px;padding-left:2px;}
+.month-summary{display:flex;justify-content:space-between;font-size:13px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.pie-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);}
+.legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0;}
+
+/* BALANCE */
+.balance-card{background:linear-gradient(135deg,rgba(79,142,247,.15),rgba(52,201,132,.1));border:1px solid rgba(79,142,247,.3);border-radius:var(--radius);padding:18px;margin-bottom:12px;}
+.balance-main{font-size:32px;font-weight:700;color:var(--accent);margin:6px 0 4px;}
+.balance-label{font-size:12px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
+.balance-sub{font-size:12px;color:var(--text2);}
+
+/* ACCOUNT LIST */
+.acct-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+.acct-row:last-child{border-bottom:none;}
+.acct-name{font-size:13px;font-weight:600;}
+.acct-bal{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;}
+.acct-init{font-size:11px;color:var(--text3);margin-top:1px;}
+
+/* TRANSACTION */
+.tx-item{padding:10px 0;border-bottom:1px solid var(--border);}
+.tx-item:last-child{border-bottom:none;}
+.tx-type-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:700;}
+.tx-out{background:rgba(240,90,90,.12);color:var(--red);border:1px solid rgba(240,90,90,.3);}
+.tx-in{background:rgba(52,201,132,.12);color:var(--green);border:1px solid rgba(52,201,132,.3);}
+.seg-ctrl{display:flex;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:3px;gap:3px;margin-bottom:14px;}
+.seg-btn{flex:1;padding:7px 4px;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;background:transparent;color:var(--text2);font-family:inherit;transition:all .15s;}
+.seg-btn.active{background:var(--bg2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.3);}
+select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px;outline:none;font-family:inherit;-webkit-appearance:none;}
+select:focus{border-color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- NAV TOP -->
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('home',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>首页
+  </button>
+  <button class="nav-btn" onclick="showPage('entry',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>录入
+  </button>
+  <button class="nav-btn" onclick="showPage('records',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>记录
+  </button>
+  <button class="nav-btn" onclick="showPage('balance',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>余额
+  </button>
+  <button class="nav-btn" onclick="showPage('chart',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>分析
+  </button>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<!-- STORE MANAGER MODAL -->
+<div class="modal-overlay" id="store-modal">
+  <div class="modal">
+    <div class="modal-title">管理店铺 <button class="modal-close" onclick="closeModal('store-modal')">×</button></div>
+    <div id="store-list-manage"></div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="form-label">添加新店铺</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="new-store-name" placeholder="店铺名称" style="flex:1;">
+        <button class="btn btn-green" onclick="addStore()">添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ACCOUNT MANAGER MODAL -->
+<div class="modal-overlay" id="acct-modal">
+  <div class="modal">
+    <div class="modal-title">管理账户 <button class="modal-close" onclick="closeModal('acct-modal')">×</button></div>
+    <div id="acct-list-manage"></div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="form-label">添加账户</label>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="text" id="new-acct-name" placeholder="账户名称 (如 DONG)" style="flex:1;">
+        <input type="text" id="new-acct-no" placeholder="账号" style="flex:1;">
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="number" id="new-acct-init" placeholder="初始余额 (IDR)" style="flex:1;">
+        <input type="color" id="new-acct-color" value="#4f8ef7" style="width:48px;height:38px;border:none;border-radius:6px;padding:2px;cursor:pointer;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label class="form-label" style="margin-bottom:6px;">选择归属店铺（可多选）</label>
+        <div id="new-acct-store-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);max-height:130px;overflow-y:auto;"></div>
+      </div>
+      <button class="btn btn-green" style="width:100%;" onclick="addAccount()">添加账户</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME PAGE -->
+<div class="page active" id="page-home">
+  <div class="header">
+    <div class="header-title">提款记录</div>
+    <div class="header-sub" id="hdr-sub">加载中...</div>
+  </div>
+  <div class="metric-grid" id="home-metrics">
+    <div class="metric accent"><div class="metric-label">本月总提款</div><div class="metric-value" id="m-total">-</div><div class="metric-unit">IDR</div></div>
+    <div class="metric"><div class="metric-label">记录天数</div><div class="metric-value" id="m-days">-</div><div class="metric-unit">天</div></div>
+    <div class="metric"><div class="metric-label">日均提款</div><div class="metric-value" id="m-avg">-</div><div class="metric-unit">IDR/天</div></div>
+    <div class="metric"><div class="metric-label">最大单日</div><div class="metric-value" id="m-max">-</div><div class="metric-unit">IDR</div></div>
+  </div>
+  <div class="card"><div class="card-title">本月各店铺</div><div id="home-stores"><div class="empty">暂无数据</div></div></div>
+  <div class="card"><div class="card-title">最近记录</div><div id="home-recent"><div class="empty">暂无记录</div></div></div>
+</div>
+
+<!-- ENTRY PAGE -->
+<div class="page" id="page-entry">
+  <div class="header">
+    <div class="header-title">录入提款</div>
+    <div class="header-sub">新增每日提款记录</div>
+  </div>
+  <div class="card">
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">日期</label><input type="date" id="entry-date"></div>
+      <div class="form-group"><label class="form-label">时间</label><input type="time" id="entry-time"></div>
+    </div>
+    <div class="form-group"><label class="form-label">各店铺金额（IDR）</label><div id="store-inputs"></div></div>
+    <div class="total-bar"><span class="total-label">合计</span><span class="total-value" id="entry-total">0</span></div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="saveEntry()">保存记录</button>
+  </div>
+  <div class="section-label">店铺管理</div>
+  <button class="btn" style="width:100%;" onclick="openModal('store-modal');renderStoreMgr()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+    管理店铺（增加 / 删除）
+  </button>
+</div>
+
+<!-- RECORDS PAGE -->
+<div class="page" id="page-records">
+  <div class="header">
+    <div class="header-title">历史记录</div>
+    <div class="header-sub" id="rec-count">共 0 条记录</div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-green btn-sm" onclick="exportExcel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      导出 Excel
+    </button>
+    <label class="btn btn-sm" style="cursor:pointer;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      导入 Excel
+      <input type="file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="importExcel(event)">
+    </label>
+  </div>
+  <div class="month-tabs" id="month-tabs"></div>
+  <div id="records-list"></div>
+</div>
+
+<!-- BALANCE PAGE -->
+<div class="page" id="page-balance">
+  <div class="header">
+    <div class="header-title">账户余额</div>
+    <div class="header-sub">实时余额统计</div>
+  </div>
+  <div id="balance-content"></div>
+  <button class="btn btn-primary" style="margin-bottom:14px;" onclick="openTxModal()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    记录支出 / 其他收入
+  </button>
+  <div class="section-label">账户管理</div>
+  <button class="btn" style="width:100%;" onclick="openModal('acct-modal');renderAcctMgr();renderNewAcctStores()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+    管理账户（增加 / 删除）
+  </button>
+</div>
+
+<!-- CHART PAGE -->
+<div class="page" id="page-chart">
+  <div class="header">
+    <div class="header-title">数据分析</div>
+    <div class="header-sub">各月提款统计</div>
+  </div>
+  <div class="month-tabs" id="chart-tabs"></div>
+  <div class="card"><div class="card-title">每日趋势</div><div style="position:relative;height:170px;"><canvas id="trendChart"></canvas></div></div>
+  <div class="card"><div class="card-title">店铺占比</div><div style="position:relative;height:200px;"><canvas id="pieChart"></canvas></div><div class="pie-legend" id="pie-legend"></div></div>
+  <div class="card"><div class="card-title">月度对比</div><div style="position:relative;height:170px;"><canvas id="monthChart"></canvas></div></div>
+  <!-- STORE 30-DAY TRENDS -->
+  <div class="card" id="store-trends-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="card-title" style="margin-bottom:0;">各店铺近30天走势</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;" id="store-trend-filter"></div>
+    </div>
+    <div id="store-trend-charts"></div>
+  </div>
+</div>
+
+<!-- TRANSACTION MODAL -->
+<div class="modal-overlay" id="tx-modal">
+  <div class="modal">
+    <div class="modal-title" id="tx-modal-title">记录交易 <button class="modal-close" onclick="closeModal('tx-modal')">×</button></div>
+    <div class="seg-ctrl">
+      <button class="seg-btn active" id="seg-out" onclick="setTxType('out')">📤 支出</button>
+      <button class="seg-btn" id="seg-in" onclick="setTxType('in')">📥 其他收入</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">账户</label>
+      <select id="tx-acct"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">日期</label><input type="date" id="tx-date"></div>
+      <div class="form-group"><label class="form-label">时间</label><input type="time" id="tx-time"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">金额 (IDR)</label>
+      <input type="number" id="tx-amount" placeholder="0" min="0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">备注</label>
+      <input type="text" id="tx-note" placeholder="可选说明">
+    </div>
+    <button class="btn btn-primary" style="margin-top:4px;" onclick="saveTx()">保存</button>
+  </div>
+</div>
+
+
+</div>
+
+<script>
+// ─── COLORS ───────────────────────────────────────
+const PALETTE=['#4f8ef7','#34c984','#f07a3a','#e05a9a','#a0c832','#f0c040','#9b6ef7','#5bbcd4','#e24b4b','#b06ef0','#2dc98e','#f06090','#40c0d0','#e8a030','#7090f0'];
+
+// ─── STATE ────────────────────────────────────────
+function loadState(){
+  try{return JSON.parse(localStorage.getItem('app_state')||'null');}catch(e){return null;}
+}
+function saveState(){
+  try{localStorage.setItem('app_state',JSON.stringify({stores,data,accounts}));}catch(e){}
+}
+
+// Default stores
+let stores=[
+  'keep maju office','keep maju','tiga M karpet','Mandiri perkakas',
+  'kingcan office','tik tok km','tik tok matabor','weyeirofficestore',
+  'kingcan_','LOGO','FLAM KRPET'
+];
+
+// 账户定义：name=账户名, acctNo=账号, color=标识色, initBalance=初始余额
+// storeMapping: 哪些店铺提款归入此账户
+let accounts=[
+  {id:1, name:'DONG',  acctNo:'3874',        color:'#22c55e', initBalance:0,
+   storeMapping:['keep maju office','keep maju','kingcan_']},
+  {id:2, name:'DUMAI', acctNo:'1086787866',  color:'#eab308', initBalance:0,
+   storeMapping:['tiga M karpet','kingcan office','tik tok km']},
+  {id:3, name:'JUN',   acctNo:'1083066923',  color:'#e2e8f0', initBalance:0,
+   storeMapping:['weyeirofficestore','FLAM KRPET']},
+  {id:4, name:'BOWO',  acctNo:'1083046931',  color:'#38bdf8', initBalance:0,
+   storeMapping:['LOGO']},
+  {id:5, name:'WEI',   acctNo:'1083073059',  color:'#f07a3a', initBalance:0,
+   storeMapping:['Mandiri perkakas']},
+  {id:6, name:'RIZAL', acctNo:'587733258',   color:'#e05a9a', initBalance:0,
+   storeMapping:['tik tok matabor']},
+];
+
+const HISTORY=[{"date":"2026-04-25","time":"19:00","stores":{"keep maju office":7817764,"keep maju":9986885,"tiga M karpet":1056116,"kingcan office":2253666,"kingcan_":490098,"LOGO":344933,"FLAM KRPET":59809,"Mandiri perkakas":1187637},"total":23196908},{"date":"2026-04-24","time":"20:00","stores":{"keep maju office":15920964,"keep maju":24924310,"tiga M karpet":4119283,"kingcan office":4435547,"tik tok km":4313321,"weyeirofficestore":323183,"kingcan_":767153,"LOGO":83811,"Mandiri perkakas":696750},"total":55584322},{"date":"2026-04-23","time":"13:30","stores":{"keep maju office":18617024,"keep maju":15775392,"tiga M karpet":7693030,"kingcan office":8013891,"tik tok km":6680959,"kingcan_":1370134,"LOGO":241105,"FLAM KRPET":313421,"Mandiri perkakas":317413},"total":59022369},{"date":"2026-04-21","time":"12:00","stores":{"keep maju office":16699888,"keep maju":27976155,"tiga M karpet":2933379,"kingcan office":5113795,"tik tok km":8713934,"weyeirofficestore":54580,"kingcan_":1393399,"LOGO":77663,"FLAM KRPET":166237,"Mandiri perkakas":2925711},"total":66054741},{"date":"2026-04-19","time":"11:00","stores":{"keep maju office":26688841,"keep maju":35056908,"tiga M karpet":9697290,"kingcan office":1884919,"tik tok km":15512323,"weyeirofficestore":241974,"kingcan_":5697744,"LOGO":137481,"FLAM KRPET":1088898,"Mandiri perkakas":6607723},"total":102614101},{"date":"2026-04-18","time":"16:38","stores":{"kingcan office":7852444},"total":7852444},{"date":"2026-04-16","time":"12:00","stores":{"keep maju office":14025815,"keep maju":19778245,"tiga M karpet":5014806,"kingcan office":6271293,"tik tok km":9263730,"weyeirofficestore":361577,"kingcan_":2156189,"LOGO":403943},"total":57275598},{"date":"2026-04-14","time":"12:00","stores":{"keep maju office":12559299,"keep maju":16828665,"tiga M karpet":2825209,"kingcan office":4897356,"tik tok km":9694461,"weyeirofficestore":199332,"kingcan_":1922157,"LOGO":417136,"Mandiri perkakas":2121749},"total":51465364},{"date":"2026-04-12","time":"12:00","stores":{"keep maju office":9572830,"keep maju":14576400,"tiga M karpet":2590318,"kingcan office":1919375,"tik tok km":8725144,"weyeirofficestore":121270,"kingcan_":578773,"LOGO":152161,"Mandiri perkakas":365120},"total":38601391},{"date":"2026-04-11","time":"12:00","stores":{"keep maju office":12769775,"keep maju":10453177,"tiga M karpet":3536836,"kingcan office":2954361,"weyeirofficestore":128750,"kingcan_":1047740,"LOGO":105873},"total":30996512},{"date":"2026-04-10","time":"12:00","stores":{"keep maju office":10149918,"keep maju":10110854,"tiga M karpet":2865603,"kingcan office":4308947,"tik tok km":5946863,"weyeirofficestore":34445,"kingcan_":1488917,"LOGO":84983},"total":34990530},{"date":"2026-04-09","time":"18:00","stores":{"keep maju office":18152665,"keep maju":18293038,"tiga M karpet":6229190,"kingcan office":8700321,"tik tok km":4163118,"weyeirofficestore":163022,"kingcan_":900454,"LOGO":172944,"Mandiri perkakas":61043},"total":56835795},{"date":"2026-04-08","time":"12:00","stores":{"keep maju office":14310364,"keep maju":16896773,"tiga M karpet":3556898,"kingcan office":6734211,"tik tok km":8581356,"weyeirofficestore":468756,"kingcan_":969653,"LOGO":359140,"Mandiri perkakas":825422},"total":52702573},{"date":"2026-04-06","time":"12:00","stores":{"keep maju office":9552131,"keep maju":7232435,"tiga M karpet":4653953,"kingcan office":8205694,"tik tok km":23301737,"weyeirofficestore":258246,"kingcan_":538312,"Mandiri perkakas":1968900},"total":55711408},{"date":"2026-04-05","time":"09:30","stores":{"keep maju office":23670530,"keep maju":25913335,"tiga M karpet":7177811,"kingcan office":1111103,"weyeirofficestore":363992,"kingcan_":1202046,"LOGO":628543,"Mandiri perkakas":2842963},"total":62910323},{"date":"2026-04-02","time":"17:00","stores":{"keep maju office":13184975,"keep maju":9580779,"tiga M karpet":5086858,"kingcan office":3120719,"tik tok km":5534028,"weyeirofficestore":90121,"kingcan_":745509,"LOGO":210835,"Mandiri perkakas":5650205,"tik tok matabor":1302950},"total":44506979},{"date":"2026-04-01","time":"12:00","stores":{"keep maju office":10975864,"keep maju":13938983,"tiga M karpet":2162603,"kingcan office":3472802,"tik tok km":14419757,"weyeirofficestore":658883,"kingcan_":356554,"LOGO":111436,"Mandiri perkakas":2092902},"total":48189784},{"date":"2026-03-30","time":"14:28","stores":{"keep maju office":10521011,"keep maju":13794726,"tiga M karpet":4011884,"kingcan office":1591527,"tik tok km":17896937,"weyeirofficestore":246895,"kingcan_":1645183,"Mandiri perkakas":1043800},"total":50751963},{"date":"2026-03-28","time":"19:22","stores":{"keep maju office":8133751,"keep maju":10811414,"tiga M karpet":3253668,"kingcan office":1363764,"tik tok km":10406263,"kingcan_":355272},"total":34324132},{"date":"2026-03-27","time":"19:43","stores":{"keep maju office":12471369,"keep maju":7930739,"tiga M karpet":5813860,"kingcan office":3697772,"tik tok km":5114453,"weyeirofficestore":327018,"kingcan_":1553736,"tik tok matabor":2526700},"total":39435647},{"date":"2026-03-26","time":"16:22","stores":{"keep maju office":14699192,"keep maju":10981616,"tiga M karpet":1946369,"kingcan office":4950203,"tik tok km":2463987,"weyeirofficestore":124865,"kingcan_":538567,"LOGO":160946},"total":35865745},{"date":"2026-03-24","time":"17:03","stores":{"keep maju office":5909212,"keep maju":2347156},"total":8256368},{"date":"2026-03-23","time":"16:50","stores":{"keep maju office":27388276,"keep maju":24122952,"tiga M karpet":9810566,"kingcan office":9103917,"tik tok km":25096564,"weyeirofficestore":1613352,"kingcan_":3621620,"LOGO":533886,"Mandiri perkakas":3780679},"total":105071812},{"date":"2026-03-19","time":"10:40","stores":{"keep maju office":32783326,"keep maju":21770480,"tiga M karpet":14149436,"kingcan office":9255948,"tik tok km":22887603,"Mandiri perkakas":1545192},"total":102391985},{"date":"2026-03-17","time":"00:00","stores":{"keep maju":10716383},"total":10716383},{"date":"2026-03-16","time":"10:40","stores":{"keep maju office":44939165,"keep maju":48320405,"tiga M karpet":16857855,"kingcan office":12471922,"tik tok km":58215216,"weyeirofficestore":1355043,"kingcan_":2417253,"Mandiri perkakas":9762974},"total":194339833},{"date":"2026-03-14","time":"00:00","stores":{"tik tok matabor":25324337},"total":25324337},{"date":"2026-03-11","time":"22:20","stores":{"keep maju office":16038119,"keep maju":14021595,"tiga M karpet":2999687,"kingcan office":5128119,"tik tok km":9032926,"weyeirofficestore":407245,"kingcan_":1023870},"total":48651561},{"date":"2026-03-10","time":"23:00","stores":{"keep maju office":8624075,"keep maju":15819793,"tiga M karpet":2851445,"kingcan office":4938384,"tik tok km":8484536,"weyeirofficestore":248687,"kingcan_":645903,"Mandiri perkakas":4744989},"total":46357812},{"date":"2026-03-09","time":"17:30","stores":{"keep maju office":38984390,"keep maju":38984390,"tiga M karpet":12715021,"kingcan office":9261879,"tik tok km":31586732,"weyeirofficestore":869636,"kingcan_":2760391,"Mandiri perkakas":6179460},"total":141341899},{"date":"2026-03-05","time":"20:15","stores":{"keep maju office":16844807,"keep maju":20901609,"tiga M karpet":7263276,"kingcan office":5867923,"tik tok km":12511830,"weyeirofficestore":562776,"kingcan_":1873150,"LOGO":653368},"total":66478739},{"date":"2026-03-03","time":"00:00","stores":{"keep maju office":2502206,"keep maju":4285060,"tiga M karpet":748171,"kingcan office":1244686},"total":8780123},{"date":"2026-03-02","time":"22:00","stores":{"keep maju office":6806191,"keep maju":8745348,"tiga M karpet":3533587,"kingcan office":2772420,"tik tok km":8067471,"weyeirofficestore":87340,"kingcan_":67580,"LOGO":20448},"total":30100385},{"date":"2026-03-01","time":"23:00","stores":{"keep maju office":8482183,"keep maju":9404620,"tiga M karpet":3404521,"kingcan office":1146131,"tik tok km":9926398,"weyeirofficestore":109745,"kingcan_":314094},"total":32787692},{"date":"2026-02-28","time":"23:00","stores":{"keep maju office":24305543,"keep maju":26658850,"tiga M karpet":8091485,"kingcan office":7698684,"tik tok km":16993112,"weyeirofficestore":845720,"kingcan_":2097138,"LOGO":115909,"Mandiri perkakas":4017641},"total":90824082},{"date":"2026-02-26","time":"12:00","stores":{"keep maju office":16003761,"keep maju":20723439,"tiga M karpet":5046114,"kingcan office":5603884,"tik tok km":20962255,"weyeirofficestore":314967,"kingcan_":2186768,"LOGO":103610,"Mandiri perkakas":5858500},"total":76803298},{"date":"2026-02-23","time":"22:00","stores":{"keep maju office":9959107,"keep maju":16483291,"tiga M karpet":4008327,"kingcan office":3044118,"tik tok km":14761658,"weyeirofficestore":558076,"kingcan_":1475333},"total":50289910},{"date":"2026-02-22","time":"17:00","stores":{"keep maju office":10166290,"keep maju":17280152,"tiga M karpet":4502369,"kingcan office":3397502,"weyeirofficestore":138549,"kingcan_":244372,"Mandiri perkakas":2230943},"total":37960177},{"date":"2026-02-21","time":"11:00","stores":{"keep maju office":21573604,"keep maju":27904428,"tiga M karpet":9011229,"kingcan office":7086337,"tik tok km":20811122,"weyeirofficestore":145771,"kingcan_":1577274,"LOGO":308926,"Mandiri perkakas":3315287},"total":91733978},{"date":"2026-02-18","time":"14:20","stores":{"keep maju office":4533652,"keep maju":7177669,"tiga M karpet":2755755,"kingcan office":1234543,"tik tok km":12765158,"weyeirofficestore":76703,"kingcan_":175026,"LOGO":204357,"Mandiri perkakas":2800199},"total":31723062},{"date":"2026-02-17","time":"19:00","stores":{"keep maju office":9067686,"keep maju":9719348,"tiga M karpet":2506972,"kingcan office":2428504,"weyeirofficestore":266890,"kingcan_":306004,"Mandiri perkakas":975552},"total":25270956},{"date":"2026-02-16","time":"19:00","stores":{"keep maju office":19436344,"keep maju":24671241,"tiga M karpet":9009961,"kingcan office":6048663,"tik tok km":13779058,"weyeirofficestore":65112,"kingcan_":2063295,"LOGO":153475,"Mandiri perkakas":9010188},"total":84237337},{"date":"2026-02-14","time":"00:00","stores":{"keep maju office":22218493,"keep maju":31900342,"tiga M karpet":10770087,"kingcan office":8046079,"tik tok km":20684751,"weyeirofficestore":1087684,"kingcan_":1562960,"LOGO":223136,"Mandiri perkakas":5131146},"total":101624678},{"date":"2026-02-11","time":"18:00","stores":{"keep maju office":10062695,"keep maju":14922508,"tiga M karpet":4146165,"kingcan office":2244339,"tik tok km":10751038,"weyeirofficestore":125487,"kingcan_":1293847,"Mandiri perkakas":1758250},"total":45304329},{"date":"2026-02-10","time":"13:10","stores":{"keep maju office":6084471,"keep maju":11720918,"tiga M karpet":4476213,"kingcan office":1989804},"total":24271406},{"date":"2026-02-09","time":"12:00","stores":{"keep maju office":18037553,"keep maju":40112463,"tiga M karpet":11743683,"kingcan office":7003720,"tik tok km":14025125,"weyeirofficestore":464691,"kingcan_":1814322,"Mandiri perkakas":1893224,"tik tok matabor":1807185},"total":96901966},{"date":"2026-02-06","time":"16:15","stores":{"keep maju office":9206748,"keep maju":17211723,"tiga M karpet":3314395,"kingcan office":2017370,"tik tok km":7477955,"weyeirofficestore":475635,"kingcan_":544112,"Mandiri perkakas":2078170},"total":42326108},{"date":"2026-02-05","time":"16:00","stores":{"keep maju office":6202139,"keep maju":7043195,"tiga M karpet":2522630,"kingcan office":2559213,"kingcan_":883346},"total":19210523},{"date":"2026-02-04","time":"16:30","stores":{"keep maju office":8617241,"keep maju":18113861,"tiga M karpet":1533083,"kingcan office":1717393,"tik tok km":2910942,"weyeirofficestore":121028,"kingcan_":872267,"Mandiri perkakas":121028},"total":34006843},{"date":"2026-02-03","time":"14:30","stores":{"keep maju office":7079584,"keep maju":6615687,"tiga M karpet":4232902,"kingcan office":1513544,"tik tok km":11039622,"weyeirofficestore":948468,"kingcan_":1513544,"tik tok matabor":1266895},"total":34210246},{"date":"2026-02-01","time":"22:00","stores":{"keep maju office":7003466,"keep maju":22646477,"tiga M karpet":4969623,"kingcan office":3459002,"weyeirofficestore":349919,"kingcan_":418350,"Mandiri perkakas":3109260},"total":41956097},{"date":"2026-01-31","time":"16:00","stores":{"keep maju office":5699639,"keep maju":6971085,"tiga M karpet":6117011,"kingcan office":1047731,"weyeirofficestore":25372,"kingcan_":870463,"Mandiri perkakas":550410},"total":21281711},{"date":"2026-01-30","time":"17:30","stores":{"keep maju office":9145918,"keep maju":15183098,"tiga M karpet":2119704,"kingcan office":3937734,"tik tok km":7799008,"weyeirofficestore":73156,"kingcan_":1817905,"LOGO":150000,"Mandiri perkakas":371200,"tik tok matabor":607455},"total":41205178},{"date":"2026-01-29","time":"13:00","stores":{"keep maju office":6524415,"keep maju":7683856,"tiga M karpet":2409204,"kingcan office":1538525,"weyeirofficestore":344697,"Mandiri perkakas":2634206},"total":21134903},{"date":"2026-01-28","time":"16:30","stores":{"keep maju office":19828476,"keep maju":23272863,"tiga M karpet":6493324,"tik tok km":12085937,"weyeirofficestore":138400,"kingcan_":2368340,"Mandiri perkakas":2051146},"total":66238486},{"date":"2026-01-26","time":"13:00","stores":{"keep maju office":13142118,"keep maju":19009267,"tiga M karpet":7199995,"kingcan office":4754508,"tik tok km":11796714,"weyeirofficestore":120857,"kingcan_":1369464,"Mandiri perkakas":374471,"tik tok matabor":8457686},"total":66225080},{"date":"2026-01-24","time":"15:00","stores":{"keep maju office":4879195,"keep maju":11155540,"tiga M karpet":5245098,"kingcan office":2573542,"tik tok km":14370326,"weyeirofficestore":144741,"kingcan_":1244036},"total":39612478},{"date":"2026-01-23","time":"17:00","stores":{"keep maju office":3961780,"keep maju":8504105,"tiga M karpet":13808813,"kingcan office":1522206},"total":27796904},{"date":"2026-01-22","time":"22:00","stores":{"keep maju office":12179270,"keep maju":21629603,"kingcan office":4746940,"tik tok km":7240359,"Mandiri perkakas":4891610,"tik tok matabor":1142880},"total":51830662},{"date":"2026-01-21","time":"12:00","stores":{"keep maju office":12839440,"keep maju":14482845,"tiga M karpet":6056135,"kingcan office":1742930,"tik tok km":7799687,"weyeirofficestore":626571,"kingcan_":1301759,"Mandiri perkakas":1810991,"tik tok matabor":5242843},"total":51903201},{"date":"2026-01-19","time":"15:30","stores":{"keep maju office":28943907,"keep maju":56217724,"tiga M karpet":16596313,"kingcan office":6446870,"tik tok km":21012237,"Mandiri perkakas":2437973},"total":131655024},{"date":"2026-01-15","time":"17:00","stores":{"keep maju office":5932337,"keep maju":9101927,"tiga M karpet":4174818,"kingcan office":1952196,"tik tok km":7826554,"weyeirofficestore":206623,"kingcan_":220772,"Mandiri perkakas":873415},"total":30288642},{"date":"2026-01-14","time":"17:30","stores":{"keep maju office":8340714,"keep maju":18720728,"tiga M karpet":3302130,"kingcan office":8641791,"Mandiri perkakas":977125},"total":39982488},{"date":"2026-01-13","time":"18:00","stores":{"keep maju office":21521795,"keep maju":31583743,"tiga M karpet":12039059,"kingcan office":108600,"tik tok km":13528868,"weyeirofficestore":400806,"kingcan_":235546,"LOGO":108600,"Mandiri perkakas":4142145},"total":83669162},{"date":"2026-01-10","time":"19:00","stores":{"keep maju office":6562408,"keep maju":18418067,"tiga M karpet":6181768,"kingcan office":1809221,"tik tok km":4783541,"LOGO":231209,"Mandiri perkakas":2543689},"total":40529903},{"date":"2026-01-09","time":"17:00","stores":{"keep maju office":8940651,"keep maju":16982472,"tiga M karpet":5254417,"kingcan office":1497431,"tik tok km":6890212,"kingcan_":284937,"Mandiri perkakas":304106},"total":40154226},{"date":"2026-01-08","time":"17:17","stores":{"keep maju office":8872045,"keep maju":16460107,"tiga M karpet":6524797,"kingcan office":541926,"tik tok km":3375379,"Mandiri perkakas":896674},"total":36670928},{"date":"2026-01-07","time":"17:01","stores":{"keep maju office":25456364,"keep maju":28155947,"tiga M karpet":10554443,"kingcan office":3340907,"tik tok km":20861095,"weyeirofficestore":452849,"kingcan_":602771,"LOGO":435855,"Mandiri perkakas":3169829},"total":93030060},{"date":"2026-01-05","time":"15:20","stores":{"keep maju office":8090377,"keep maju":11157695,"tiga M karpet":3524409,"kingcan office":1372227,"Mandiri perkakas":1063376},"total":25208084},{"date":"2026-01-04","time":"16:15","stores":{"keep maju office":7208305,"keep maju":18774667,"tiga M karpet":6333591,"kingcan office":1163364,"Mandiri perkakas":1594870},"total":35074797},{"date":"2026-01-03","time":"15:00","stores":{"keep maju office":15788545,"keep maju":41232376,"tiga M karpet":10694950,"kingcan office":3189071,"tik tok km":18045085,"weyeirofficestore":108953,"kingcan_":158708,"LOGO":209655,"Mandiri perkakas":3164158},"total":92591501},{"date":"2025-12-31","time":"12:00","stores":{"keep maju office":10409758,"keep maju":16005338,"tiga M karpet":5153729,"Mandiri perkakas":1912470,"kingcan office":2691728,"tik tok km":4575436,"weyeirofficestore":406143,"kingcan_":204029,"LOGO":155657},"total":41514288},{"date":"2025-12-30","time":"20:30","stores":{"keep maju office":32126969,"keep maju":69577525,"tiga M karpet":26148755,"Mandiri perkakas":5616654,"kingcan office":6989148,"tik tok km":15464067,"kingcan_":500000,"LOGO":603964},"total":157027082},{"date":"2025-12-25","time":"15:30","stores":{"keep maju office":10278270,"keep maju":22022683,"tiga M karpet":6410006,"Mandiri perkakas":3743100,"kingcan office":2614987,"tik tok km":6017511,"weyeirofficestore":157651},"total":51244208},{"date":"2025-12-23","time":"19:30","stores":{"keep maju office":7793668,"keep maju":13351148,"tiga M karpet":3373682,"kingcan office":2417346,"tik tok km":2855161,"weyeirofficestore":1002216,"kingcan_":108768,"LOGO":508284},"total":31410273},{"date":"2025-12-22","time":"18:00","stores":{"keep maju office":10646796,"keep maju":17820801,"tiga M karpet":5119503,"Mandiri perkakas":2522215,"kingcan office":1869515,"tik tok km":3502364},"total":41481194},{"date":"2025-12-21","time":"16:00","stores":{"keep maju office":27700240,"keep maju":38451287,"tiga M karpet":9412027,"Mandiri perkakas":2807112,"kingcan office":4691233,"tik tok km":7257643},"total":90319542},{"date":"2025-12-19","time":"12:00","stores":{"keep maju office":10532663,"keep maju":18964258,"tiga M karpet":7983456,"kingcan office":2533453,"tik tok km":7164604,"weyeirofficestore":371466,"kingcan_":238605},"total":47788505},{"date":"2025-12-18","time":"13:40","stores":{"keep maju office":8547785,"keep maju":14746482,"tiga M karpet":4120953,"Mandiri perkakas":2374925,"kingcan office":1619683,"kingcan_":63480},"total":31473308},{"date":"2025-12-17","time":"15:00","stores":{"keep maju office":7685652,"keep maju":14055858,"tiga M karpet":3363011,"kingcan office":1528080,"tik tok km":4551216,"tik tok matabor":10494825,"weyeirofficestore":42671,"kingcan_":95479,"LOGO":15148},"total":41831940},{"date":"2025-12-16","time":"15:15","stores":{"keep maju office":5880932,"keep maju":9912753,"tiga M karpet":3429303,"kingcan office":786646,"tik tok km":11902933},"total":31912567},{"date":"2025-12-15","time":"18:30","stores":{"keep maju office":9663616,"keep maju":14307738,"tiga M karpet":5252141,"Mandiri perkakas":3494914,"kingcan office":1327882,"weyeirofficestore":267847},"total":34314138},{"date":"2025-12-14","time":"17:11","stores":{"keep maju office":10711729,"keep maju":20440146,"tiga M karpet":5949859,"kingcan office":1637497,"kingcan_":92818},"total":38832049},{"date":"2025-12-13","time":"14:00","stores":{"keep maju office":13572236,"keep maju":17538226,"tiga M karpet":6696519,"Mandiri perkakas":760630,"kingcan office":1556609,"tik tok km":8018946,"kingcan_":57233},"total":48200399},{"date":"2025-12-11","time":"21:00","stores":{"keep maju office":11038623,"keep maju":19639637,"tiga M karpet":3560755,"kingcan office":917289,"tik tok km":2387768,"kingcan_":135632},"total":37679704},{"date":"2025-12-10","time":"18:00","stores":{"keep maju office":7959343,"keep maju":18145253,"tiga M karpet":6305119,"Mandiri perkakas":403670,"kingcan office":1464620,"tik tok km":2881608,"weyeirofficestore":79755,"kingcan_":93526,"LOGO":174737},"total":37507631},{"date":"2025-12-09","time":"12:00","stores":{"keep maju office":6488957,"keep maju":16957935,"tiga M karpet":8280100,"kingcan office":1362447,"tik tok km":4890121,"kingcan_":196317},"total":38175877},{"date":"2025-12-07","time":"21:45","stores":{"keep maju office":6872456,"keep maju":18706188,"tiga M karpet":6305445,"kingcan office":1196161,"tik tok km":2638920},"total":35719170},{"date":"2025-12-06","time":"12:00","stores":{"keep maju office":12483111,"keep maju":18482075,"tiga M karpet":4424700,"kingcan office":1540228,"tik tok km":7514984,"weyeirofficestore":43258,"kingcan_":43132},"total":44531488},{"date":"2025-12-04","time":"16:00","stores":{"keep maju office":4494405,"keep maju":13220444,"tiga M karpet":2338527,"Mandiri perkakas":5873763,"kingcan office":943385,"tik tok matabor":1353518,"weyeirofficestore":492036},"total":28716078},{"date":"2025-12-03","time":"17:50","stores":{"keep maju office":5300594,"keep maju":9631075,"tiga M karpet":2057333,"kingcan office":724220,"kingcan_":378713},"total":18091935},{"date":"2025-12-02","time":"16:20","stores":{"keep maju office":6495137,"keep maju":11343329,"tiga M karpet":1747906,"Mandiri perkakas":1249658,"kingcan office":1158073,"tik tok km":1971801},"total":23965904},{"date":"2025-12-01","time":"11:40","stores":{"keep maju office":22355746,"keep maju":44540825,"tiga M karpet":5261457,"Mandiri perkakas":1623646,"kingcan office":3989252,"tik tok km":10221664},"total":87992590},{"date":"2025-11-27","time":"12:00","stores":{"keep maju office":6394054,"keep maju":10782308,"tiga M karpet":4745523,"Mandiri perkakas":495862,"kingcan office":1242358,"tik tok km":4130978,"tik tok matabor":9249262},"total":37040345},{"date":"2025-11-26","time":"18:30","stores":{"keep maju office":4900321,"keep maju":10941749,"tiga M karpet":2526482,"Mandiri perkakas":961162,"kingcan office":960747,"tik tok km":2206275},"total":22496736},{"date":"2025-11-25","time":"20:00","stores":{"keep maju office":5274868,"keep maju":17983057,"tiga M karpet":2319002,"kingcan office":546452,"tik tok km":3480317},"total":29603696},{"date":"2025-11-24","time":"18:00","stores":{"keep maju office":13976434,"keep maju":29124719,"tiga M karpet":10336169,"Mandiri perkakas":687500,"kingcan office":896266,"tik tok km":5798250,"weyeirofficestore":235793},"total":61055131},{"date":"2025-11-22","time":"18:00","stores":{"keep maju office":16317740,"keep maju":30678454,"tiga M karpet":5919930,"Mandiri perkakas":2185256,"kingcan office":856823,"weyeirofficestore":203593,"kingcan_":113175},"total":56274971},{"date":"2025-11-20","time":"12:00","stores":{"keep maju office":12045075,"keep maju":13277251,"tiga M karpet":3768322,"Mandiri perkakas":1935250,"kingcan office":157288,"tik tok km":1059138,"kingcan_":18894},"total":32261218},{"date":"2025-11-19","time":"15:00","stores":{"keep maju office":14125616,"keep maju":28437554,"tiga M karpet":4466948,"Mandiri perkakas":1497240,"kingcan office":1033836,"tik tok km":7292342},"total":56853536},{"date":"2025-11-17","time":"16:30","stores":{"keep maju office":8884144,"keep maju":20276620,"tiga M karpet":4193247,"Mandiri perkakas":810698,"kingcan office":317651,"tik tok km":3370268,"kingcan_":25376},"total":37878004},{"date":"2025-11-16","time":"14:07","stores":{"keep maju office":7149151,"keep maju":15585766,"tiga M karpet":3126351,"kingcan office":28982,"tik tok km":3360366,"tik tok matabor":777375,"weyeirofficestore":18697},"total":30046688},{"date":"2025-11-15","time":"13:56","stores":{"keep maju office":14700428,"keep maju":38484431,"tiga M karpet":6035546,"Mandiri perkakas":803338,"kingcan office":1030400,"tik tok km":4884418,"tik tok matabor":2330425,"weyeirofficestore":232640,"kingcan_":19715},"total":68521341},{"date":"2025-11-13","time":"13:24","stores":{"keep maju office":8516638,"keep maju":13779366,"tiga M karpet":2230779,"Mandiri perkakas":531750,"kingcan office":748088,"tik tok km":1957179,"weyeirofficestore":179358,"kingcan_":87698},"total":28030856},{"date":"2025-11-12","time":"11:39","stores":{"keep maju office":13220452,"keep maju":27183949,"tiga M karpet":6552100,"Mandiri perkakas":1798107,"tik tok km":6590429,"tik tok matabor":7458430},"total":62803467},{"date":"2025-11-10","time":"10:47","stores":{"keep maju office":13220452,"keep maju":28130855,"tiga M karpet":5403729,"Mandiri perkakas":6611134},"total":53366170},{"date":"2025-11-08","time":"13:00","stores":{"keep maju office":11937188,"keep maju":27615409,"tiga M karpet":3309743,"kingcan office":58579,"tik tok km":5334777,"tik tok matabor":5334777,"weyeirofficestore":487146,"kingcan_":29737},"total":54107356},{"date":"2025-11-06","time":"13:00","stores":{"keep maju office":6038171,"keep maju":15813642,"tiga M karpet":1855748,"Mandiri perkakas":3462971},"total":27170532},{"date":"2025-11-05","time":"16:00","stores":{"keep maju office":11147883,"keep maju":37050554,"tiga M karpet":6705154,"Mandiri perkakas":1581600,"tik tok km":3548462,"tik tok matabor":11003745},"total":71037398},{"date":"2025-11-01","time":"12:00","stores":{"keep maju office":23345892,"keep maju":50767478,"tiga M karpet":13626154,"Mandiri perkakas":3023771,"tik tok km":9077534,"weyeirofficestore":1907758},"total":101748587},{"date":"2025-10-30","time":"12:00","stores":{"keep maju office":4707722,"keep maju":13740790,"tiga M karpet":2491074,"Mandiri perkakas":364450},"total":21304036},{"date":"2025-10-29","time":"17:00","stores":{"keep maju office":13081445,"keep maju":22658201,"tiga M karpet":5553970,"Mandiri perkakas":1692807},"total":42986423},{"date":"2025-10-27","time":"19:00","stores":{"keep maju office":14536427,"keep maju":41835656,"tiga M karpet":8990174,"Mandiri perkakas":2590615,"tik tok km":4582950},"total":72535822},{"date":"2025-10-25","time":"10:20","stores":{"keep maju office":9710882,"keep maju":28678962,"tiga M karpet":8077065,"Mandiri perkakas":3840188},"total":50307097},{"date":"2025-10-23","time":"15:34","stores":{"keep maju office":17297017,"keep maju":30427148,"tiga M karpet":6515920,"Mandiri perkakas":2324208,"tik tok km":5438643},"total":62002936},{"date":"2025-10-20","time":"17:30","stores":{"keep maju office":7783161,"keep maju":13673810,"tiga M karpet":2215042,"Mandiri perkakas":775018,"tik tok km":1813934,"weyeirofficestore":817951},"total":27078916},{"date":"2025-10-19","time":"15:00","stores":{"keep maju office":22576605,"keep maju":50023157,"tiga M karpet":10366615,"Mandiri perkakas":1872389,"tik tok km":6720982},"total":91559748},{"date":"2025-10-15","time":"12:00","stores":{"keep maju office":7503433,"keep maju":13568073,"tiga M karpet":2361393},"total":23432899},{"date":"2025-10-14","time":"17:00","stores":{"keep maju office":6472851,"keep maju":12287970,"tiga M karpet":1755742,"tik tok km":1173944},"total":21690507},{"date":"2025-10-13","time":"16:00","stores":{"keep maju office":23268295,"keep maju":48448798,"tiga M karpet":8849232,"Mandiri perkakas":6493331,"tik tok km":6870996,"tik tok matabor":2036336,"weyeirofficestore":116490},"total":96083478},{"date":"2025-10-09","time":"15:00","stores":{"keep maju office":4894612,"keep maju":9025164,"tiga M karpet":1680302,"Mandiri perkakas":2859664},"total":18459742},{"date":"2025-10-08","time":"15:44","stores":{"keep maju office":6908522,"keep maju":12731233,"tiga M karpet":1804518,"Mandiri perkakas":2654251,"tik tok km":2486866},"total":26585390},{"date":"2025-10-07","time":"13:00","stores":{"keep maju office":4730467,"keep maju":11100165,"tiga M karpet":2061533,"Mandiri perkakas":2033349,"tik tok km":1747909,"weyeirofficestore":247878},"total":21921301},{"date":"2025-10-06","time":"12:00","stores":{"keep maju office":8709371,"keep maju":25917098,"tiga M karpet":3462405,"Mandiri perkakas":4510309,"tik tok km":4762665,"kingcan_":142596},"total":47504444},{"date":"2025-10-04","time":"12:00","stores":{"keep maju office":8791343,"keep maju":24437429,"tiga M karpet":2373328,"Mandiri perkakas":12616053,"tik tok km":1366836,"weyeirofficestore":274322,"kingcan_":138849},"total":49998160},{"date":"2025-10-02","time":"15:47","stores":{"keep maju office":2472021,"keep maju":10154793,"tiga M karpet":1298395,"tik tok matabor":2413550},"total":16338759},{"date":"2025-10-01","time":"15:47","stores":{"keep maju office":8690182,"keep maju":10510519,"tiga M karpet":1134508,"Mandiri perkakas":759350,"tik tok km":1232177},"total":22326736},{"date":"2025-09-30","time":"12:00","stores":{"keep maju office":3545287,"keep maju":30776429,"tiga M karpet":1046399,"Mandiri perkakas":2881252,"kingcan_":26751},"total":38276118},{"date":"2025-09-29","time":"12:00","stores":{"keep maju office":6345933,"keep maju":19910443,"tiga M karpet":2042504,"Mandiri perkakas":2983743,"tik tok km":4195494,"weyeirofficestore":372446},"total":35850563},{"date":"2025-09-27","time":"14:03","stores":{"keep maju office":2058878,"keep maju":8841948,"tiga M karpet":1322370,"Mandiri perkakas":2626318,"kingcan_":269650},"total":15119164},{"date":"2025-09-26","time":"15:09","stores":{"keep maju office":14224943,"keep maju":32688156,"tiga M karpet":5842886,"Mandiri perkakas":6831955,"tik tok km":4049530,"tik tok matabor":1700000,"weyeirofficestore":250750,"kingcan_":202010},"total":65790230},{"date":"2025-09-23","time":"12:00","stores":{"keep maju office":3348553,"keep maju":7185565,"tiga M karpet":347344,"Mandiri perkakas":845660,"tik tok km":2362922},"total":14090044},{"date":"2025-09-22","time":"12:15","stores":{"keep maju office":5060667,"keep maju":26958366,"tiga M karpet":1816846,"Mandiri perkakas":752159,"tik tok km":2246265,"tik tok matabor":2913500},"total":39747803},{"date":"2025-09-20","time":"12:19","stores":{"keep maju office":1818786,"keep maju":4382375,"tiga M karpet":551674,"Mandiri perkakas":3228750,"tik tok matabor":7000000,"kingcan_":253550},"total":17235135},{"date":"2025-09-19","time":"19:07","stores":{"keep maju office":9020560,"keep maju":24754172,"tiga M karpet":2217691,"Mandiri perkakas":2716925,"tik tok km":1394309},"total":40103657},{"date":"2025-09-17","time":"12:53","stores":{"keep maju office":2972155,"keep maju":11577553,"tiga M karpet":527049,"tik tok km":674441,"weyeirofficestore":69578,"kingcan_":185145},"total":16005921},{"date":"2025-09-16","time":"12:03","stores":{"keep maju office":5171167,"keep maju":9451787,"tiga M karpet":874619,"Mandiri perkakas":2366778,"tik tok km":2559890,"kingcan_":46549},"total":20470790},{"date":"2025-09-15","time":"13:35","stores":{"keep maju office":3145870,"keep maju":16915066,"tiga M karpet":514362},"total":20575298},{"date":"2025-09-14","time":"12:03","stores":{"keep maju office":8558688,"keep maju":11888326,"tiga M karpet":1694599,"Mandiri perkakas":6620825,"tik tok km":3847610,"weyeirofficestore":507100,"kingcan_":15192},"total":33132340},{"date":"2025-09-13","time":"12:17","stores":{"keep maju":9701406},"total":9701406},{"date":"2025-09-12","time":"15:26","stores":{"keep maju office":3756057,"keep maju":10694538,"tiga M karpet":731885,"Mandiri perkakas":2823021,"weyeirofficestore":749120,"kingcan_":134954},"total":18889575},{"date":"2025-09-11","time":"15:40","stores":{"keep maju office":4906388,"keep maju":12218572,"tiga M karpet":3711421,"tik tok km":1884973,"weyeirofficestore":1796154,"kingcan_":116243},"total":24633751},{"date":"2025-09-10","time":"13:40","stores":{"keep maju office":5984463,"keep maju":17878664,"tik tok km":1604738,"kingcan_":50125},"total":25517990},{"date":"2025-09-08","time":"13:40","stores":{"keep maju office":5607536,"keep maju":22717275,"tiga M karpet":998028,"Mandiri perkakas":752122,"tik tok km":4801588},"total":34876549},{"date":"2025-09-06","time":"13:00","stores":{"keep maju office":6135009,"keep maju":22149749,"tiga M karpet":2168524,"tik tok km":4370659},"total":34823941},{"date":"2025-09-03","time":"12:20","stores":{"keep maju office":2829449,"keep maju":6436626,"tiga M karpet":3138703,"Mandiri perkakas":1745439},"total":14150217},{"date":"2025-09-02","time":"12:00","stores":{"keep maju office":4749985,"keep maju":10530303,"tiga M karpet":788135},"total":16068423},{"date":"2025-09-01","time":"12:40","stores":{"keep maju office":2894146,"keep maju":14861063,"tiga M karpet":1142567,"Mandiri perkakas":5394943,"tik tok km":2936343,"kingcan_":34725},"total":27263787}];
+
+let data=[...HISTORY];
+
+// Load saved state
+const saved=loadState();
+if(saved){
+  if(saved.stores&&saved.stores.length)stores=saved.stores;
+  if(saved.accounts&&saved.accounts.length)accounts=saved.accounts;
+  if(saved.data&&saved.data.length){
+    data=[...HISTORY];
+    saved.data.forEach(r=>{
+      const i=data.findIndex(d=>d.date===r.date);
+      if(i>=0)data[i]=r;else data.push(r);
+    });
+    data.sort((a,b)=>b.date.localeCompare(a.date));
+  }
+}
+// Ensure all accounts have storeMapping
+accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
+
+function getColor(i){return PALETTE[i%PALETTE.length];}
+
+function fmt(n){if(n>=1e9)return(n/1e9).toFixed(2)+'B';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return n.toString();}
+function fmtFull(n){return new Intl.NumberFormat('id-ID').format(Math.round(n));}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');btn.classList.add('active');
+  if(name==='home')renderHome();
+  if(name==='records')renderRecords();
+  if(name==='balance')renderBalance();
+  if(name==='chart')renderCharts();
+}
+
+// ─── STORE MANAGER ───────────────────────────────
+function renderStoreMgr(){
+  document.getElementById('store-list-manage').innerHTML=stores.map((s,i)=>`
+    <div class="store-manage-row">
+      <div class="store-color-dot" style="background:${getColor(i)}"></div>
+      <div class="store-manage-name">${s}</div>
+      <button class="btn btn-danger btn-sm" onclick="removeStore(${i})">删除</button>
+    </div>`).join('');
+}
+function addStore(){
+  const n=document.getElementById('new-store-name').value.trim();
+  if(!n){toast('⚠️ 请输入店铺名称');return;}
+  if(stores.includes(n)){toast('⚠️ 店铺已存在');return;}
+  stores.push(n);saveState();
+  document.getElementById('new-store-name').value='';
+  renderStoreMgr();buildStoreInputs();toast('✓ 已添加：'+n);
+}
+function removeStore(i){
+  if(!confirm('确认删除店铺：'+stores[i]+'？\n（历史数据中该店铺的数据不会被删除）'))return;
+  stores.splice(i,1);saveState();renderStoreMgr();buildStoreInputs();toast('已删除');
+}
+
+// ─── ACCOUNT MANAGER ─────────────────────────────
+function renderAcctMgr(){
+  // All stores currently assigned
+  const assignedStores=new Set(accounts.flatMap(a=>a.storeMapping||[]));
+  const unassigned=stores.filter(s=>!assignedStores.has(s));
+
+  document.getElementById('acct-list-manage').innerHTML=accounts.map((a,i)=>`
+    <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <div style="width:10px;height:10px;border-radius:3px;background:${a.color};flex-shrink:0;"></div>
+        <div style="font-size:13px;font-weight:700;flex:1;">${a.name}</div>
+        <div style="font-size:11px;color:var(--text3);">账号: ${a.acctNo}</div>
+        <button class="btn btn-danger btn-sm" onclick="removeAccount(${i})">删除</button>
+      </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:6px;">
+        初始余额：<input type="number" value="${a.initBalance}" style="width:130px;font-size:12px;padding:4px 8px;display:inline-block;" onchange="accounts[${i}].initBalance=parseInt(this.value)||0;saveState();renderBalance();">
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">归属店铺：</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        ${(a.storeMapping||[]).map(s=>`<span style="font-size:10px;padding:2px 8px;border-radius:99px;background:${a.color}22;color:${a.color};border:1px solid ${a.color}44;display:flex;align-items:center;gap:4px;">
+          ${s} <span onclick="removeStoreFromAccount(${i},'${s}')" style="cursor:pointer;opacity:.6;">×</span>
+        </span>`).join('')}
+      </div>
+      ${unassigned.length?`<div style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+        <select id="add-store-sel-${i}" style="font-size:12px;padding:4px 8px;flex:1;background:var(--bg2);color:var(--text);border:1px solid var(--border2);border-radius:6px;">
+          <option value="">+ 添加店铺</option>
+          ${unassigned.map(s=>`<option value="${s}">${s}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" onclick="addStoreToAccount(${i})">添加</button>
+      </div>`:''}
+    </div>`).join('') || '<div class="empty">暂无账户</div>';
+}
+function addStoreToAccount(ai){
+  const sel=document.getElementById('add-store-sel-'+ai);
+  if(!sel||!sel.value)return;
+  if(!accounts[ai].storeMapping)accounts[ai].storeMapping=[];
+  accounts[ai].storeMapping.push(sel.value);
+  saveState();renderAcctMgr();renderBalance();toast('✓ 已添加：'+sel.value);
+}
+function removeStoreFromAccount(ai,s){
+  accounts[ai].storeMapping=(accounts[ai].storeMapping||[]).filter(x=>x!==s);
+  saveState();renderAcctMgr();renderBalance();toast('已移除：'+s);
+}
+function renderNewAcctStores(){
+  const el=document.getElementById('new-acct-store-list');
+  if(!el)return;
+  el.innerHTML=stores.map(s=>{
+    const owner=accounts.find(a=>(a.storeMapping||[]).includes(s));
+    return`<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;padding:3px 8px;border-radius:99px;border:1px solid var(--border2);background:var(--bg2);">
+      <input type="checkbox" value="${s}" style="accent-color:var(--accent);">
+      ${s}${owner?` <span style="color:var(--text3);font-size:10px;">[${owner.name}]</span>`:''}
+    </label>`;
+  }).join('');
+}
+function addAccount(){
+  const name=document.getElementById('new-acct-name').value.trim();
+  const acctNo=document.getElementById('new-acct-no').value.trim()||'-';
+  const init=parseInt(document.getElementById('new-acct-init').value)||0;
+  const color=document.getElementById('new-acct-color').value||'#4f8ef7';
+  if(!name){toast('⚠️ 请输入账户名称');return;}
+  const checked=[...document.querySelectorAll('#new-acct-store-list input[type=checkbox]:checked')].map(c=>c.value);
+  accounts.push({id:Date.now(),name,acctNo,color,initBalance:init,storeMapping:checked});
+  saveState();
+  document.getElementById('new-acct-name').value='';
+  document.getElementById('new-acct-no').value='';
+  document.getElementById('new-acct-init').value='';
+  renderAcctMgr();renderNewAcctStores();renderBalance();toast('✓ 已添加账户：'+name);
+}
+function removeAccount(i){
+  if(!confirm('确认删除账户：'+accounts[i].name+'？'))return;
+  accounts.splice(i,1);saveState();renderAcctMgr();renderBalance();toast('已删除');
+}
+function updateAcctInit(i,v){
+  accounts[i].initBalance=parseInt(v)||0;saveState();renderBalance();
+}
+
+// ─── ENTRY ───────────────────────────────────────
+function buildStoreInputs(){
+  document.getElementById('store-inputs').innerHTML=stores.map((s,i)=>`
+    <div class="si-row">
+      <span class="si-dot" style="background:${getColor(i)}"></span>
+      <span class="si-label">${s}</span>
+      <div class="si-input"><input type="number" id="si-${i}" placeholder="0" min="0" oninput="calcTotal()"/></div>
+    </div>`).join('');
+}
+function calcTotal(){
+  let t=0;stores.forEach((_,i)=>{t+=parseInt(document.getElementById('si-'+i)?.value||0)||0;});
+  document.getElementById('entry-total').textContent=fmtFull(t);
+}
+function initEntry(){
+  const now=new Date();
+  document.getElementById('entry-date').value=now.toISOString().slice(0,10);
+  document.getElementById('entry-time').value=now.toTimeString().slice(0,5);
+  buildStoreInputs();
+}
+function saveEntry(){
+  const date=document.getElementById('entry-date').value;
+  const time=document.getElementById('entry-time').value;
+  if(!date){toast('⚠️ 请填写日期');return;}
+  const st={};let total=0;
+  stores.forEach((s,i)=>{const v=parseInt(document.getElementById('si-'+i)?.value||0)||0;if(v>0){st[s]=v;total+=v;}});
+  if(total===0){toast('⚠️ 请至少填写一家店铺');return;}
+  const entry={date,time,stores:st,total};
+  const idx=data.findIndex(d=>d.date===date);
+  if(idx>=0)data[idx]=entry;else data.push(entry);
+  data.sort((a,b)=>b.date.localeCompare(a.date));
+  saveState();
+  stores.forEach((_,i)=>{if(document.getElementById('si-'+i))document.getElementById('si-'+i).value='';});
+  calcTotal();toast('✓ 记录已保存');
+}
+
+// ─── HOME ─────────────────────────────────────────
+function renderHome(){
+  const ym=new Date().toISOString().slice(0,7);
+  const monthly=data.filter(d=>d.date.startsWith(ym));
+  const total=monthly.reduce((s,d)=>s+d.total,0);
+  const days=monthly.length,avg=days?total/days:0,maxDay=monthly.reduce((m,d)=>d.total>m?d.total:m,0);
+  document.getElementById('m-total').textContent=fmt(total);
+  document.getElementById('m-days').textContent=days;
+  document.getElementById('m-avg').textContent=fmt(avg);
+  document.getElementById('m-max').textContent=fmt(maxDay);
+  document.getElementById('hdr-sub').textContent=ym.replace('-','年')+'月';
+
+  const st={};stores.forEach(s=>st[s]=0);
+  monthly.forEach(d=>stores.forEach(s=>st[s]+=(d.stores[s]||0)));
+  // also include non-configured stores
+  monthly.forEach(d=>Object.keys(d.stores).forEach(s=>{if(!(s in st))st[s]=0;st[s]+=(d.stores[s]||0);}));
+  const allStores=Object.keys(st).filter(s=>st[s]>0).sort((a,b)=>st[b]-st[a]);
+  const sc=document.getElementById('home-stores');
+  if(!allStores.length){sc.innerHTML='<div class="empty">本月暂无数据</div>';}
+  else sc.innerHTML=allStores.map((s,xi)=>{
+    const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:xi+stores.length);
+    const pct=total?(st[s]/total*100):0;
+    return`<div class="store-row"><div style="flex:1;min-width:0;">
+      <div style="font-size:13px;font-weight:600;color:${c}">${s}</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${pct.toFixed(0)}%;background:${c}"></div></div>
+    </div><div style="margin-left:14px;text-align:right;flex-shrink:0;">
+      <div style="font-size:13px;font-weight:600;">${fmt(st[s])}</div>
+      <div style="font-size:11px;color:var(--text2);">${pct.toFixed(1)}%</div>
+    </div></div>`;
+  }).join('');
+
+  const rc=document.getElementById('home-recent');
+  rc.innerHTML=data.length?data.slice(0,4).map(d=>{
+    const ss=Object.entries(d.stores).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+    return`<div class="rec-item"><div style="display:flex;justify-content:space-between;align-items:flex-start;">
+      <div><div style="font-size:12px;color:var(--text2);">${d.date} ${d.time||''}</div>
+      <div style="font-size:16px;font-weight:700;margin-top:2px;">${fmtFull(d.total)}</div></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px;">${ss.length}家店</div>
+    </div><div class="rec-tags">${ss.slice(0,3).map(([s,v])=>{
+      const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:8);
+      return`<span class="tag" style="color:${c};border-color:${c}40;background:${c}12;">${s} ${d.total?(v/d.total*100).toFixed(0):0}%</span>`;
+    }).join('')}</div></div>`;
+  }).join(''):'<div class="empty">暂无记录</div>';
+}
+
+// ─── RECORDS ─────────────────────────────────────
+let selM='';
+function renderRecords(){
+  document.getElementById('rec-count').textContent='共 '+data.length+' 条记录';
+  const months=[...new Set(data.map(d=>d.date.slice(0,7)))].sort().reverse();
+  if(!selM||!months.includes(selM))selM=months[0]||'';
+  document.getElementById('month-tabs').innerHTML=months.map(m=>`<div class="m-tab ${m===selM?'active':''}" onclick="selM='${m}';renderRecords()">${m.replace('-','年')}月</div>`).join('');
+  const filtered=data.filter(d=>d.date.startsWith(selM));
+  const list=document.getElementById('records-list');
+  if(!filtered.length){list.innerHTML='<div class="empty">本月暂无记录</div>';return;}
+  const mT=filtered.reduce((s,d)=>s+d.total,0);
+  list.innerHTML=`<div class="card"><div class="month-summary"><span style="color:var(--text2);">本月合计</span><span style="font-weight:700;color:var(--accent);">${fmtFull(mT)}</span></div>`
+    +filtered.map(d=>{
+      const ss=Object.entries(d.stores).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+      return`<div class="rec-item"><div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div><div style="font-size:12px;color:var(--text2);">${d.date} ${d.time||''}</div>
+        <div style="font-size:16px;font-weight:700;margin-top:2px;">${fmtFull(d.total)}</div></div>
+        <button class="btn btn-danger btn-sm" onclick="delRec('${d.date}')">删除</button>
+      </div><div class="rec-tags">${ss.slice(0,4).map(([s,v])=>{
+        const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:8);
+        return`<span class="tag" style="color:${c};border-color:${c}40;background:${c}12;">${s} ${d.total?(v/d.total*100).toFixed(0):0}%</span>`;
+      }).join('')}</div></div>`;
+    }).join('')+'</div>';
+}
+function delRec(date){
+  if(!confirm('确认删除 '+date+' 的记录？'))return;
+  data=data.filter(d=>d.date!==date);saveState();renderRecords();renderHome();toast('已删除');
+}
+
+// ─── BALANCE ─────────────────────────────────────
+function renderBalance(){
+  const c=document.getElementById('balance-content');
+  if(!accounts.length){c.innerHTML='<div class="empty">暂无账户，请先添加账户</div>';return;}
+
+  let grandTotal=0;
+  const acctData=accounts.map(a=>{
+    const mapping=a.storeMapping||[];
+    const withdrawn=data.reduce((sum,rec)=>sum+mapping.reduce((s,store)=>s+(rec.stores[store]||0),0),0);
+    const txOut=acctTxOut(a.id), txIn=acctTxIn(a.id);
+    const bal=a.initBalance+withdrawn+txIn-txOut;
+    grandTotal+=bal;
+    const months=[...new Set(data.map(d=>d.date.slice(0,7)))].sort().reverse().slice(0,6);
+    const monthlyData=months.map(m=>{
+      const mW=data.filter(d=>d.date.startsWith(m)).reduce((sum,rec)=>sum+mapping.reduce((s,store)=>s+(rec.stores[store]||0),0),0);
+      return {m,mW};
+    }).filter(x=>x.mW>0);
+    const acctTxList=txs.filter(t=>t.acctId===a.id).slice(0,8);
+    return {a,withdrawn,txOut,txIn,bal,monthlyData,acctTxList};
+  });
+
+  let html=`<div class="balance-card">
+    <div class="balance-label">全部账户净余额</div>
+    <div class="balance-main">${fmtFull(grandTotal)}</div>
+    <div class="balance-sub">IDR &nbsp;·&nbsp; ${accounts.length} 个账户实时汇总</div>
+  </div>`;
+
+  acctData.forEach(({a,withdrawn,txOut,txIn,bal,monthlyData,acctTxList})=>{
+    const mapping=a.storeMapping||[];
+    const balColor=bal>=0?a.color:'var(--red)';
+    html+=`<div class="card" style="border-left:3px solid ${a.color};">
+      <!-- Header -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div style="width:10px;height:10px;border-radius:3px;background:${a.color};flex-shrink:0;"></div>
+            <div style="font-size:16px;font-weight:700;">${a.name}</div>
+            <div style="font-size:11px;color:var(--text3);padding:2px 8px;background:var(--bg3);border-radius:99px;">${a.acctNo}</div>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:5px;line-height:1.8;">
+            初始 ${fmtFull(a.initBalance)}<br>
+            <span style="color:var(--green);">+ 提款到账 ${fmtFull(withdrawn)}</span><br>
+            ${txIn>0?`<span style="color:var(--green);">+ 其他收入 ${fmtFull(txIn)}</span><br>`:''}
+            ${txOut>0?`<span style="color:var(--red);">− 支出 ${fmtFull(txOut)}</span>`:''}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:23px;font-weight:700;color:${balColor};">${fmtFull(bal)}</div>
+          <div style="font-size:10px;color:var(--text3);">IDR 净余额</div>
+          <button class="btn btn-sm" style="margin-top:8px;padding:5px 10px;font-size:11px;" onclick="openTxModal(${a.id})">+ 记录</button>
+        </div>
+      </div>
+
+      <!-- 归属店铺 -->
+      <div style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">归属店铺</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${mapping.length?mapping.map(s=>{
+            const storeTotal=data.reduce((sum,rec)=>sum+(rec.stores[s]||0),0);
+            return`<span style="font-size:10px;padding:3px 9px;border-radius:99px;background:${a.color}18;color:${a.color};border:1px solid ${a.color}33;">${s} <span style="opacity:.75;">${fmt(storeTotal)}</span></span>`;
+          }).join(''):'<span style="font-size:11px;color:var(--text3);">暂无店铺</span>'}
+        </div>
+      </div>
+
+      <!-- 月度到账 -->
+      ${monthlyData.length?`<div style="margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">近期月度到账</div>
+        ${monthlyData.slice(0,3).map(({m,mW})=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid var(--border);">
+            <span style="font-size:12px;color:var(--text2);">${m.replace('-','年')}月</span>
+            <span style="font-size:12px;font-weight:700;color:var(--green);">+${fmtFull(mW)}</span>
+          </div>`).join('')}
+      </div>`:''}
+
+      <!-- 交易明细 -->
+      ${acctTxList.length?`<div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--text3);">交易记录</div>
+          <button class="btn btn-sm" style="font-size:10px;padding:3px 8px;" onclick="openTxModal(${a.id})">＋ 新增</button>
+        </div>
+        ${acctTxList.map(t=>`
+          <div class="tx-item" style="display:flex;align-items:center;gap:8px;">
+            <span class="tx-type-badge ${t.type==='out'?'tx-out':'tx-in'}">${t.type==='out'?'支出':'收入'}</span>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:600;color:${t.type==='out'?'var(--red)':'var(--green)'};">${t.type==='out'?'−':'+'}${fmtFull(t.amount)}</div>
+              <div style="font-size:10px;color:var(--text3);">${t.date}${t.note?' · '+t.note:''}</div>
+            </div>
+            <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:10px;" onclick="delTx(${t.id})">删</button>
+          </div>`).join('')}
+      </div>`:`<div style="text-align:center;padding:12px 0 4px;color:var(--text3);font-size:12px;">暂无支出/收入记录 · <span style="color:var(--accent);cursor:pointer;" onclick="openTxModal(${a.id})">添加</span></div>`}
+    </div>`;
+  });
+
+  c.innerHTML=html;
+}
+
+// ─── EXPORT EXCEL ─────────────────────────────────
+function exportExcel(){
+  try{
+    const wb=XLSX.utils.book_new();
+    // Get all unique store names across all records
+    const allStores=[...new Set(data.flatMap(d=>Object.keys(d.stores)))];
+    
+    // Group by year
+    const years=[...new Set(data.map(d=>d.date.slice(0,4)))];
+    years.forEach(yr=>{
+      const rows=data.filter(d=>d.date.startsWith(yr)).sort((a,b)=>a.date.localeCompare(b.date));
+      const header=['日期','时间',...allStores,'合计'];
+      const sheetData=[header,...rows.map(r=>[
+        r.date,r.time||'',...allStores.map(s=>r.stores[s]||0),r.total
+      ])];
+      // Add monthly totals
+      const months=[...new Set(rows.map(r=>r.date.slice(0,7)))];
+      months.forEach(m=>{
+        const mRows=rows.filter(r=>r.date.startsWith(m));
+        const mTotals=allStores.map(s=>mRows.reduce((sum,r)=>sum+(r.stores[s]||0),0));
+        const mTotal=mRows.reduce((sum,r)=>sum+r.total,0);
+        sheetData.push([m+'月合计','',...mTotals,mTotal]);
+      });
+      const ws=XLSX.utils.aoa_to_sheet(sheetData);
+      // Column widths
+      ws['!cols']=[{wch:12},{wch:8},...allStores.map(()=>({wch:16})),{wch:14}];
+      XLSX.utils.book_append_sheet(wb,ws,yr+'年');
+    });
+
+    // Account balance sheet
+    const totalW=data.reduce((s,d)=>s+d.total,0);
+    const balData=[
+      ['账户名称','初始余额','累计到账','当前余额'],
+      ...accounts.map(a=>[
+        a.name,a.initBalance,Math.round(totalW/accounts.length),
+        a.initBalance+Math.round(totalW/accounts.length)
+      ]),
+      ['合计','','',accounts.reduce((s,a)=>s+a.initBalance+Math.round(totalW/accounts.length),0)]
+    ];
+    const bws=XLSX.utils.aoa_to_sheet(balData);
+    bws['!cols']=[{wch:16},{wch:16},{wch:16},{wch:16}];
+    XLSX.utils.book_append_sheet(wb,bws,'账户余额');
+
+    XLSX.writeFile(wb,'提款记录_'+new Date().toISOString().slice(0,10)+'.xlsx');
+    toast('✓ 导出成功');
+  }catch(e){toast('❌ 导出失败：'+e.message);}
+}
+
+// ─── IMPORT EXCEL ─────────────────────────────────
+function importExcel(event){
+  const file=event.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      let imported=0,skipped=0;
+      wb.SheetNames.forEach(sn=>{
+        if(sn==='账户余额')return;
+        const ws=wb.Sheets[sn];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+        if(rows.length<2)return;
+        const header=rows[0];
+        const dateIdx=header.indexOf('日期');
+        const timeIdx=header.indexOf('时间');
+        const totalIdx=header.findIndex(h=>h==='合计'||h==='total');
+        if(dateIdx<0)return;
+        // Store columns: between time and total
+        const storeStart=timeIdx>=0?timeIdx+1:dateIdx+1;
+        const storeEnd=totalIdx>=0?totalIdx:header.length;
+        const storeCols=header.slice(storeStart,storeEnd);
+
+        rows.slice(1).forEach(row=>{
+          const rawDate=row[dateIdx];
+          if(!rawDate||String(rawDate).includes('月合计'))return;
+          // Parse date
+          let dateStr='';
+          if(typeof rawDate==='number'){
+            // Excel serial date
+            const d=new Date(Math.round((rawDate-25569)*86400*1000));
+            dateStr=d.toISOString().slice(0,10);
+          } else {
+            const m=String(rawDate).match(/(\d{4})[\-\/](\d{1,2})[\-\/](\d{1,2})/);
+            if(m)dateStr=`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+          }
+          if(!dateStr)return;
+          const st={};let total=0;
+          storeCols.forEach((s,i)=>{
+            const v=parseInt(row[storeStart+i])||0;
+            if(v>0){st[s]=v;total+=v;}
+          });
+          if(total===0)return;
+          // Add new stores
+          storeCols.forEach(s=>{if(s&&!stores.includes(s))stores.push(s);});
+          const entry={date:dateStr,time:String(row[timeIdx]||'12:00').slice(0,5),stores:st,total};
+          const idx=data.findIndex(d=>d.date===dateStr);
+          if(idx>=0){data[idx]=entry;skipped++;}else{data.push(entry);imported++;}
+        });
+      });
+      data.sort((a,b)=>b.date.localeCompare(a.date));
+      saveState();buildStoreInputs();renderRecords();renderHome();
+      toast(`✓ 导入完成：新增${imported}条，更新${skipped}条`);
+    }catch(err){toast('❌ 导入失败：'+err.message);}
+    event.target.value='';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ─── CHARTS ──────────────────────────────────────
+let tC,pC,mC,cM='';
+const storeTrendCharts={};
+let activeTrendStores=new Set();
+
+function renderCharts(){
+  const months=[...new Set(data.map(d=>d.date.slice(0,7)))].sort().reverse();
+  if(!cM||!months.includes(cM))cM=months[0]||'';
+  document.getElementById('chart-tabs').innerHTML=months.map(m=>`<div class="m-tab ${m===cM?'active':''}" onclick="cM='${m}';renderCharts()">${m.replace('-','年')}月</div>`).join('');
+  const filtered=data.filter(d=>d.date.startsWith(cM)).sort((a,b)=>a.date.localeCompare(b.date));
+  const gc='rgba(255,255,255,0.06)',tc='#555b72';
+  if(tC)tC.destroy();
+  tC=new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:filtered.map(d=>d.date.slice(5)),datasets:[{data:filtered.map(d=>d.total),borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,0.1)',fill:true,tension:0.3,pointRadius:3,pointBackgroundColor:'#4f8ef7'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10},autoSkip:true,maxTicksLimit:10},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10},callback:v=>fmt(v)},grid:{color:gc}}}}});
+
+  const st={};
+  filtered.forEach(d=>Object.entries(d.stores).forEach(([s,v])=>{st[s]=(st[s]||0)+v;}));
+  const active=Object.entries(st).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  const ptotal=active.reduce((s,[,v])=>s+v,0);
+  const aColors=active.map(([s])=>{const ci=stores.indexOf(s);return getColor(ci>=0?ci:8);});
+  if(pC)pC.destroy();
+  pC=new Chart(document.getElementById('pieChart'),{type:'doughnut',data:{labels:active.map(([s])=>s),datasets:[{data:active.map(([,v])=>v),backgroundColor:aColors,borderWidth:2,borderColor:'#0f1117'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},cutout:'60%'}});
+  document.getElementById('pie-legend').innerHTML=active.map(([s,v],i)=>`<div class="legend-item"><div class="legend-dot" style="background:${aColors[i]}"></div>${s} ${ptotal?(v/ptotal*100).toFixed(0):0}%</div>`).join('');
+
+  const allM=[...new Set(data.map(d=>d.date.slice(0,7)))].sort();
+  const mTotals=allM.map(m=>data.filter(d=>d.date.startsWith(m)).reduce((s,d)=>s+d.total,0));
+  if(mC)mC.destroy();
+  mC=new Chart(document.getElementById('monthChart'),{type:'bar',data:{labels:allM.map(m=>m.slice(2).replace('-','/')),datasets:[{data:mTotals,backgroundColor:allM.map(m=>m===cM?'#4f8ef7':'rgba(79,142,247,0.25)'),borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:tc,font:{size:10}},grid:{color:gc}},y:{ticks:{color:tc,font:{size:10},callback:v=>fmt(v)},grid:{color:gc}}}}});
+
+  renderStoreTrends();
+}
+
+function renderStoreTrends(){
+  // Build last 30 calendar days
+  const today=new Date();
+  const days=[];
+  for(let i=29;i>=0;i--){
+    const d=new Date(today);d.setDate(today.getDate()-i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  const labels=days.map(d=>d.slice(5)); // MM-DD
+
+  // Collect all stores that appear in the 30-day window
+  const window30=data.filter(d=>days.includes(d.date));
+  const storesIn30=new Set(window30.flatMap(d=>Object.keys(d.stores)));
+  // Sort by total desc
+  const storeList=[...storesIn30].sort((a,b)=>{
+    const ta=window30.reduce((s,d)=>s+(d.stores[a]||0),0);
+    const tb=window30.reduce((s,d)=>s+(d.stores[b]||0),0);
+    return tb-ta;
+  });
+
+  // Init activeTrendStores on first render (top 4)
+  if(activeTrendStores.size===0){
+    storeList.slice(0,4).forEach(s=>activeTrendStores.add(s));
+  }
+  // Remove stores no longer in 30-day window
+  [...activeTrendStores].forEach(s=>{if(!storesIn30.has(s))activeTrendStores.delete(s);});
+
+  // Render filter pills
+  const gc='rgba(255,255,255,0.06)',tc='#555b72';
+  document.getElementById('store-trend-filter').innerHTML=storeList.map((s,i)=>{
+    const c=getColor(stores.indexOf(s)>=0?stores.indexOf(s):i);
+    const on=activeTrendStores.has(s);
+    return `<button onclick="toggleTrendStore('${s.replace(/'/g,"\'")}')" style="font-size:10px;padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:${on?c+'22':'transparent'};color:${on?c:'var(--text3)'};cursor:pointer;font-family:inherit;font-weight:600;transition:all .15s;">${s}</button>`;
+  }).join('');
+
+  // Render one mini-chart per active store
+  const container=document.getElementById('store-trend-charts');
+  const activeList=[...activeTrendStores];
+
+  if(!activeList.length){
+    container.innerHTML='<div class="empty">请选择店铺</div>';
+    // destroy leftover charts
+    Object.keys(storeTrendCharts).forEach(k=>{storeTrendCharts[k].destroy();delete storeTrendCharts[k];});
+    return;
+  }
+
+  // Build HTML slots for each active store (keep existing canvases where possible)
+  container.innerHTML=activeList.map((s,i)=>{
+    const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:i);
+    const vals=days.map(d=>{const rec=data.find(r=>r.date===d);return rec?(rec.stores[s]||0):null;});
+    const total=vals.reduce((sum,v)=>sum+(v||0),0);
+    const nonZero=vals.filter(v=>v>0);
+    const avg=nonZero.length?total/nonZero.length:0;
+    const peak=nonZero.length?Math.max(...nonZero):0;
+    return `<div style="margin-bottom:18px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:${c};flex-shrink:0;"></div>
+          <span style="font-size:12px;font-weight:700;color:${c};">${s}</span>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:11px;color:var(--text2);">30天合计 </span>
+          <span style="font-size:12px;font-weight:700;color:${c};">${fmt(total)}</span>
+          <span style="font-size:10px;color:var(--text3);margin-left:6px;">均 ${fmt(Math.round(avg))} 峰 ${fmt(peak)}</span>
+        </div>
+      </div>
+      <div style="position:relative;height:80px;"><canvas id="stc-${i}"></canvas></div>
+    </div>`;
+  }).join('');
+
+  // Destroy old charts not needed
+  Object.keys(storeTrendCharts).forEach(k=>{
+    if(!activeList.find((_,i)=>'stc-'+i===k)){storeTrendCharts[k].destroy();delete storeTrendCharts[k];}
+  });
+
+  // Draw each chart
+  activeList.forEach((s,i)=>{
+    const ci=stores.indexOf(s);const c=getColor(ci>=0?ci:i);
+    const vals=days.map(d=>{const rec=data.find(r=>r.date===d);return rec?(rec.stores[s]||0):null;});
+    const cid='stc-'+i;
+    const canvas=document.getElementById(cid);
+    if(!canvas)return;
+    if(storeTrendCharts[cid])storeTrendCharts[cid].destroy();
+    storeTrendCharts[cid]=new Chart(canvas,{
+      type:'bar',
+      data:{
+        labels,
+        datasets:[
+          {type:'bar',data:vals,backgroundColor:vals.map(v=>v>0?c+'99':c+'11'),borderRadius:3,barPercentage:0.7},
+          {type:'line',data:vals.map((v,idx)=>{
+            // 7-day rolling average
+            const w=vals.slice(Math.max(0,idx-3),idx+4).filter(x=>x!==null&&x>0);
+            return w.length?w.reduce((a,b)=>a+b,0)/w.length:null;
+          }),borderColor:c,borderWidth:1.5,pointRadius:0,tension:0.4,fill:false,spanGaps:true}
+        ]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.raw>0?fmtFull(ctx.raw)+' IDR':'-'}}},
+        scales:{
+          x:{ticks:{color:tc,font:{size:9},autoSkip:true,maxTicksLimit:10},grid:{color:gc}},
+          y:{ticks:{color:tc,font:{size:9},callback:v=>fmt(v)},grid:{color:gc},beginAtZero:true}
+        }
+      }
+    });
+  });
+}
+
+function toggleTrendStore(s){
+  if(activeTrendStores.has(s))activeTrendStores.delete(s);
+  else activeTrendStores.add(s);
+  renderStoreTrends();
+}
+
+
+// ─── TRANSACTIONS ────────────────────────────────
+// txs: [{id, acctId, type:'out'|'in', date, time, amount, note}]
+let txs = [];
+let txEditType = 'out';
+
+function loadTxs(){
+  try{ return JSON.parse(localStorage.getItem('app_txs')||'[]'); }catch(e){ return []; }
+}
+function saveTxs(){
+  try{ localStorage.setItem('app_txs', JSON.stringify(txs)); }catch(e){}
+}
+txs = loadTxs();
+
+function setTxType(t){
+  txEditType = t;
+  document.getElementById('seg-out').classList.toggle('active', t==='out');
+  document.getElementById('seg-in').classList.toggle('active', t==='in');
+}
+
+function openTxModal(acctId){
+  const now = new Date();
+  document.getElementById('tx-date').value = now.toISOString().slice(0,10);
+  document.getElementById('tx-time').value = now.toTimeString().slice(0,5);
+  document.getElementById('tx-amount').value = '';
+  document.getElementById('tx-note').value = '';
+  setTxType('out');
+  // Populate account dropdown
+  const sel = document.getElementById('tx-acct');
+  sel.innerHTML = accounts.map(a => `<option value="${a.id}"${a.id===acctId?' selected':''}>${a.name} (${a.acctNo})</option>`).join('');
+  openModal('tx-modal');
+}
+
+function saveTx(){
+  const acctId = parseInt(document.getElementById('tx-acct').value);
+  const date = document.getElementById('tx-date').value;
+  const time = document.getElementById('tx-time').value;
+  const amount = parseInt(document.getElementById('tx-amount').value)||0;
+  const note = document.getElementById('tx-note').value.trim();
+  if(!date){ toast('⚠️ 请填写日期'); return; }
+  if(amount<=0){ toast('⚠️ 请填写金额'); return; }
+  if(!acctId){ toast('⚠️ 请选择账户'); return; }
+  txs.push({ id: Date.now(), acctId, type: txEditType, date, time, amount, note });
+  txs.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+  saveTxs();
+  closeModal('tx-modal');
+  renderBalance();
+  toast(txEditType==='out' ? '✓ 支出已记录' : '✓ 收入已记录');
+}
+
+function delTx(id){
+  if(!confirm('确认删除此交易记录？')) return;
+  txs = txs.filter(t => t.id !== id);
+  saveTxs();
+  renderBalance();
+  toast('已删除');
+}
+
+// Helper: compute net transactions for an account
+function acctTxNet(acctId){
+  return txs.filter(t=>t.acctId===acctId).reduce((s,t)=> t.type==='in' ? s+t.amount : s-t.amount, 0);
+}
+function acctTxOut(acctId){
+  return txs.filter(t=>t.acctId===acctId&&t.type==='out').reduce((s,t)=>s+t.amount,0);
+}
+function acctTxIn(acctId){
+  return txs.filter(t=>t.acctId===acctId&&t.type==='in').reduce((s,t)=>s+t.amount,0);
+}
+
+// ─── INIT ─────────────────────────────────────────
+initEntry();renderHome();
+</script>
+</body>
+</html>
