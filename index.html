@@ -464,23 +464,44 @@ function initFirebase(){
         });
         data.sort((a,b)=>b.date.localeCompare(a.date));
       }
-      if(remote.txs) txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
+      if(remote.txs){
+        txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
+        saveTxsLocal();
+      }
+      saveLocalBackup();
     }
     fbReady = true;
     setSyncStatus('ok','✓ 已连接');
-    // Re-render everything
+    // Always re-render ALL pages so balance/txs are always up to date
     buildStoreInputs();
     renderHome();
+    renderBalance();
     const activePage = document.querySelector('.page.active');
     if(activePage){
       const pid = activePage.id.replace('page-','');
       if(pid==='records') renderRecords();
-      if(pid==='balance') renderBalance();
       if(pid==='chart') renderCharts();
     }
   }, err=>{
     fbReady = false;
     setSyncStatus('red','⚠ 离线模式');
+  });
+
+  // Dedicated real-time listener for txs changes only
+  // This fires when another device adds/deletes a tx
+  db.ref('appdata/txs').on('value', snap=>{
+    if(!fbReady) return; // skip during initial load (handled above)
+    const remote = snap.val();
+    if(remote !== undefined && remote !== null){
+      const newTxs = Array.isArray(remote) ? remote : Object.values(remote);
+      // Only update if actually different
+      if(JSON.stringify(newTxs) !== JSON.stringify(txs)){
+        txs = newTxs;
+        saveTxsLocal();
+        renderBalance();
+        setSyncStatus('ok','✓ 余额已同步');
+      }
+    }
   });
 }
 
