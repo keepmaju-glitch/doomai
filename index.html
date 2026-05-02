@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v23</title>
+<title>提款记录管理 v24</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -605,28 +605,18 @@ async function initFirebase(){
 
 function startPolling(){
   clearInterval(pollTimer);
-  let lastTxsHash = '';
-  let lastDataCount = 0;
+  let _lh = '';
   pollTimer = setInterval(async ()=>{
     try{
-      // Always fetch txs and compare - most reliable approach
-      const remoteTxsRaw = await fbGet('/appdata/txs');
-      const remoteTxsArr = remoteTxsRaw ?
-        Object.values(remoteTxsRaw).filter(t=>t&&t.id&&t.amount)
-        : [];
-      // Also check record count for withdrawal sync
-      const remoteDataRaw = await fbGet('/appdata/data');
-      const remoteDataCount = remoteDataRaw ? Object.keys(remoteDataRaw).length : 0;
-      
-      const newHash = remoteTxsArr.map(t=>t.id+':'+t.amount).sort().join('|');
-      
-      if(newHash !== lastTxsHash || remoteDataCount !== lastDataCount){
-        lastTxsHash = newHash;
-        lastDataCount = remoteDataCount;
-        // Fetch full data and apply
-        const remote = await fbGet('/appdata');
-        if(remote && remote._t) lastRemoteT = remote._t;
-        applyRemoteData(remote);
+      const r = await fetch(FB_URL+'/appdata/txs.json');
+      const d = await r.json();
+      const arr = d ? Object.values(d).filter(t=>t&&t.id&&t.amount) : [];
+      const h = arr.map(t=>t.id+':'+t.amount).sort().join('|');
+      if(h !== _lh){
+        _lh = h;
+        const full = await (await fetch(FB_URL+'/appdata.json')).json();
+        if(full && full._t) lastRemoteT = full._t;
+        applyRemoteData(full);
         renderBalance();
         renderHome();
         const activePage = document.querySelector('.page.active');
@@ -639,7 +629,7 @@ function startPolling(){
         toast('✓ 数据已更新');
       }
     } catch(e){ console.log('Poll error:', e.message); }
-  }, 4000);
+  }, 3000);
 }
 
 // Default stores
