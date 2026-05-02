@@ -1332,32 +1332,28 @@ function acctTxIn(acctId){
 }
 
 // ─── DEBUG ───────────────────────────────────────
-function debugFirebase(){
+async function debugFirebase(){
   const lines = [];
   lines.push('fbReady: ' + fbReady);
-  lines.push('txs count: ' + txs.length);
-  lines.push('accounts count: ' + accounts.length);
-  lines.push('FB URL: tikum-app-default-rtdb...');
-  lines.push('firebase SDK: ' + (typeof firebase !== 'undefined' ? '✓ 已加载' : '✗ 未加载'));
-  lines.push('db ready: ' + (db ? '✓' : '✗'));
-  
-  // Try to read txs from Firebase right now
-  lines.push('\n正在读取Firebase...');
+  lines.push('txs count: ' + (txs||[]).length);
+  lines.push('accounts count: ' + (accounts||[]).length);
+  lines.push('lastRemoteT: ' + lastRemoteT);
   toast('正在检查Firebase...');
-  
-  fbGet('/appdata').then(val=>{
+  try{
+    const val = await fbGet('/appdata');
     if(!val){
-      lines.push('Firebase appdata: NULL (空)');
-      alert(lines.join('\n') + '\n\nFirebase无数据！录入一条提款记录触发同步。');
+      alert(lines.join('\n') + '\n\nFirebase: 无数据\n请先录入一条提款记录触发同步');
       return;
     }
-    lines.push('Firebase appdata: ✓ 有数据');
-    lines.push('Firebase txs: ' + JSON.stringify(val.txs).slice(0,100));
-    lines.push('lastRemoteT: ' + lastRemoteT);
+    lines.push('\nFirebase连接: ✓ 成功');
+    lines.push('Firebase _t: ' + (val._t||'无'));
+    lines.push('Firebase txs: ' + (val.txs ? JSON.stringify(val.txs).slice(0,80) : 'null'));
+    lines.push('Firebase accounts: ' + (val.accounts ? Object.keys(val.accounts).length+'条' : 'null'));
+    lines.push('Firebase data: ' + (val.data ? Object.keys(val.data).length+'条' : 'null'));
     alert(lines.join('\n'));
-  }).catch(e=>{
-    alert('Firebase读取失败!\n' + e.message + '\n\n请检查网络。');
-  });
+  } catch(e){
+    alert(lines.join('\n') + '\n\nFirebase读取失败: ' + e.message + '\n请检查网络连接');
+  }
 }
 
 // ─── REFRESH ─────────────────────────────────────
