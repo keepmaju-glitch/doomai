@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v30</title>
+<title>提款记录管理 v31</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -561,14 +561,11 @@ function applyRemoteData(remote){
       ? Object.values(remote.data).filter(Boolean)
       : fbToArr(remote.data);
     if(remoteData.length){
-      // Merge remote data with HISTORY (remote takes priority)
-      data = [...HISTORY];
-      remoteData.filter(r=>r&&r.date).forEach(r=>{
-        const i = data.findIndex(d=>d.date===r.date);
-        if(i>=0) data[i]=r; else data.push(r);
-      });
-      data.sort((a,b)=>b.date.localeCompare(a.date));
+      // Use Firebase as the ONLY source of truth - ignore HISTORY
+      // This ensures deletions are respected
+      data = remoteData.filter(r=>r&&r.date).sort((a,b)=>b.date.localeCompare(a.date));
     }
+    // If Firebase has no data, keep current data (from HISTORY on first load)
   }
   // Always update txs - use txsFromObj to handle Firebase object format
   if(remote.txs){
@@ -602,6 +599,15 @@ async function initFirebase(){
   try{
     const remote = await fbGet('/appdata');
     applyRemoteData(remote);
+    // If Firebase has no data, push local HISTORY to Firebase
+    if(!remote || !remote.data || Object.keys(remote.data||{}).length===0){
+      console.log('Firebase empty - pushing HISTORY to Firebase');
+      const dataObj={};
+      data.forEach(d=>{if(d&&d.date)dataObj['d'+d.date.replace(/-/g,'')]=d;});
+      fetch(FB_URL+'/appdata/data.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataObj)})
+        .then(()=>console.log('HISTORY pushed to Firebase'))
+        .catch(e=>console.error('Push HISTORY failed:',e));
+    }
     fbReady = true;
     setSyncStatus('ok','✓ 已连接');
     rerenderAll();
