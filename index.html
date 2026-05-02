@@ -429,79 +429,94 @@ function saveTxsLocal(){
   try{localStorage.setItem('app_txs',JSON.stringify(txs));}catch(e){}
 }
 
+// ── helper: safely convert Firebase value to array ──────────────
+function fbToArr(val){
+  if(!val) return [];
+  if(Array.isArray(val)) return val.filter(Boolean);
+  if(typeof val==='object') return Object.values(val).filter(Boolean);
+  return [];
+}
+
 function saveState(){
   saveLocalBackup();
   if(!fbReady) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
     setSyncStatus('saving','同步中...');
-    db.ref('appdata').set({stores,data,accounts,txs:txs||[],_t:Date.now()})
+    // Save stores & accounts & data separately from txs for reliability
+    const payload = {
+      stores: stores,
+      accounts: accounts,
+      data: data,
+      txs: txs||[],
+      _t: Date.now()
+    };
+    db.ref('appdata').set(payload)
       .then(()=>setSyncStatus('ok','✓ 已同步'))
-      .catch(e=>setSyncStatus('red','同步失败'));
-  }, 600);
-}
-function saveTxs(){
-  saveTxsLocal();
-  saveState();
+      .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
+  }, 800);
 }
 
-// Start Firebase listener
+function saveTxs(){
+  saveTxsLocal();
+  // Write txs directly to its own node immediately (no debounce)
+  if(fbReady){
+    setSyncStatus('saving','同步中...');
+    db.ref('appdata/txs').set(txs||[])
+      .then(()=>{ setSyncStatus('ok','✓ 已同步'); saveLocalBackup(); })
+      .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
+    // Also update timestamp
+    db.ref('appdata/_t').set(Date.now());
+  }
+}
+
+function applyRemoteData(remote){
+  if(!remote) return;
+  if(remote.stores && fbToArr(remote.stores).length)
+    stores = fbToArr(remote.stores);
+  if(remote.accounts && fbToArr(remote.accounts).length){
+    accounts = fbToArr(remote.accounts);
+    accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
+  }
+  if(remote.data && fbToArr(remote.data).length){
+    const remoteData = fbToArr(remote.data);
+    data = [...HISTORY];
+    remoteData.forEach(r=>{
+      if(!r||!r.date) return;
+      const i=data.findIndex(d=>d.date===r.date);
+      if(i>=0) data[i]=r; else data.push(r);
+    });
+    data.sort((a,b)=>b.date.localeCompare(a.date));
+  }
+  // Always update txs - this is the key fix
+  const remoteTxs = fbToArr(remote.txs);
+  txs = remoteTxs;
+  saveTxsLocal();
+  saveLocalBackup();
+}
+
+function rerenderAll(){
+  buildStoreInputs();
+  renderHome();
+  renderBalance();
+  renderRecords();
+}
+
 function initFirebase(){
   setSyncStatus('saving','连接中...');
+  // Single listener on entire appdata node
   db.ref('appdata').on('value', snap=>{
     const remote = snap.val();
-    if(remote){
-      if(remote.stores && remote.stores.length) stores = remote.stores;
-      if(remote.accounts && remote.accounts.length){
-        accounts = remote.accounts;
-        accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
-      }
-      if(remote.data && remote.data.length){
-        data = [...HISTORY];
-        remote.data.forEach(r=>{
-          const i=data.findIndex(d=>d.date===r.date);
-          if(i>=0)data[i]=r; else data.push(r);
-        });
-        data.sort((a,b)=>b.date.localeCompare(a.date));
-      }
-      if(remote.txs){
-        txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
-        saveTxsLocal();
-      }
-      saveLocalBackup();
-    }
+    applyRemoteData(remote);
     fbReady = true;
     setSyncStatus('ok','✓ 已连接');
-    // Always re-render ALL pages so balance/txs are always up to date
-    buildStoreInputs();
-    renderHome();
-    renderBalance();
+    rerenderAll();
     const activePage = document.querySelector('.page.active');
-    if(activePage){
-      const pid = activePage.id.replace('page-','');
-      if(pid==='records') renderRecords();
-      if(pid==='chart') renderCharts();
-    }
+    if(activePage && activePage.id==='page-chart') renderCharts();
   }, err=>{
     fbReady = false;
     setSyncStatus('red','⚠ 离线模式');
-  });
-
-  // Dedicated real-time listener for txs changes only
-  // This fires when another device adds/deletes a tx
-  db.ref('appdata/txs').on('value', snap=>{
-    if(!fbReady) return; // skip during initial load (handled above)
-    const remote = snap.val();
-    if(remote !== undefined && remote !== null){
-      const newTxs = Array.isArray(remote) ? remote : Object.values(remote);
-      // Only update if actually different
-      if(JSON.stringify(newTxs) !== JSON.stringify(txs)){
-        txs = newTxs;
-        saveTxsLocal();
-        renderBalance();
-        setSyncStatus('ok','✓ 余额已同步');
-      }
-    }
+    console.error('Firebase error:', err);
   });
 }
 
