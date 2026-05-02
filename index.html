@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v24</title>
+<title>提款记录管理 v26</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -190,6 +190,51 @@ select:focus{border-color:var(--accent);}
 </nav>
 
 <div id="toast" class="toast"></div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;">
+  <div style="width:100%;max-width:360px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <div style="font-size:48px;margin-bottom:12px;">🔐</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text);">提款记录管理</div>
+      <div style="font-size:13px;color:var(--text3);margin-top:6px;">请输入密码以继续</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">密码</label>
+      <input type="password" id="login-pw" placeholder="输入密码" style="font-size:16px;" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="login-err" style="color:var(--red);font-size:12px;margin-bottom:10px;text-align:center;min-height:18px;"></div>
+    <button class="btn btn-primary" style="width:100%;padding:14px;" onclick="doLogin()">进入</button>
+    <div id="login-setup" style="display:none;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+      <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:10px;">首次使用 · 设置新密码</div>
+      <div class="form-group">
+        <input type="password" id="login-pw2" placeholder="再次输入确认">
+      </div>
+      <button class="btn btn-green" style="width:100%;" onclick="doSetPassword()">设置密码</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div class="modal-overlay" id="pw-modal">
+  <div class="modal">
+    <div class="modal-title">修改密码 <button class="modal-close" onclick="closeModal('pw-modal')">×</button></div>
+    <div class="form-group">
+      <label class="form-label">当前密码</label>
+      <input type="password" id="pw-old" placeholder="输入当前密码">
+    </div>
+    <div class="form-group">
+      <label class="form-label">新密码</label>
+      <input type="password" id="pw-new" placeholder="至少4位">
+    </div>
+    <div class="form-group">
+      <label class="form-label">确认新密码</label>
+      <input type="password" id="pw-new2" placeholder="再次输入新密码">
+    </div>
+    <div id="pw-err" style="color:var(--red);font-size:12px;margin-bottom:8px;min-height:18px;"></div>
+    <button class="btn btn-primary" style="width:100%;" onclick="doChangePw()">确认修改</button>
+  </div>
+</div>
 <div class="sync-bar" id="sync-bar">
   <div class="sync-inner">
     <div class="sync-dot orange" id="sync-dot"></div>
@@ -319,6 +364,9 @@ select:focus{border-color:var(--accent);}
     记录支出 / 其他收入
   </button>
   <div class="section-label">账户管理</div>
+  <button class="btn" style="width:100%;margin-bottom:8px;" onclick="openModal('pw-modal');document.getElementById('pw-err').textContent=''">
+    🔑 修改密码
+  </button>
   <button class="btn" style="width:100%;" onclick="openModal('acct-modal');renderAcctMgr();renderNewAcctStores()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
     管理账户（增加 / 删除）
@@ -473,11 +521,16 @@ function saveState(){
       const t = Date.now();
       // IMPORTANT: saveState does NOT write txs - txs is managed by saveTxs() separately
       // This prevents saveState from overwriting txs changes made by other devices
-      const r = await fetch(FB_URL+'/appdata.json',{
-        method:'PATCH',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ stores, accounts, data, _t: t })
-      });
+      // Convert data array to object for Firebase (avoids PATCH merge issues)
+      const dataObj = {};
+      (data||[]).forEach(d=>{ if(d&&d.date) dataObj['d'+d.date.replace(/-/g,'')]=d; });
+      const storesObj = (stores||[]).reduce((o,s,i)=>{o['s'+i]=s;return o;},{});
+      const accountsObj = (accounts||[]).reduce((o,a,i)=>{o['a'+i]=a;return o;},{});
+      // Use PUT to fully replace these nodes (so deletions are reflected)
+      await fetch(FB_URL+'/appdata/data.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataObj)});
+      await fetch(FB_URL+'/appdata/stores.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(stores)});
+      await fetch(FB_URL+'/appdata/accounts.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(accounts)});
+      const r = await fetch(FB_URL+'/appdata/_t.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});
       if(!r.ok) throw new Error('HTTP '+r.status);
       lastRemoteT = t;
       setSyncStatus('ok','✓ 已同步');
@@ -545,15 +598,14 @@ function applyRemoteData(remote){
     accounts = fbToArr(remote.accounts);
     accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
   }
-  if(remote.data && fbToArr(remote.data).length){
-    const remoteData = fbToArr(remote.data);
-    data = [...HISTORY];
-    remoteData.forEach(r=>{
-      if(!r||!r.date) return;
-      const i=data.findIndex(d=>d.date===r.date);
-      if(i>=0) data[i]=r; else data.push(r);
-    });
-    data.sort((a,b)=>b.date.localeCompare(a.date));
+  if(remote.data){
+    const remoteData = typeof remote.data === 'object' && !Array.isArray(remote.data)
+      ? Object.values(remote.data).filter(Boolean)
+      : fbToArr(remote.data);
+    if(remoteData.length){
+      // Use remote data directly - it's the authoritative source
+      data = remoteData.filter(r=>r&&r.date).sort((a,b)=>b.date.localeCompare(a.date));
+    }
   }
   // Always update txs - use txsFromObj to handle Firebase object format
   if(remote.txs){
@@ -1479,8 +1531,97 @@ async function refreshData(){
   }
 }
 
+// ─── PASSWORD / LOGIN ────────────────────────────
+const PW_KEY = 'app_pw_hash';
+
+function hashPw(pw){
+  // Simple hash - XOR fold with djb2
+  let h = 5381;
+  for(let i=0;i<pw.length;i++) h = ((h<<5)+h)^pw.charCodeAt(i);
+  return (h>>>0).toString(36);
+}
+
+function getSavedPw(){
+  return localStorage.getItem(PW_KEY);
+}
+
+function initLogin(){
+  const saved = getSavedPw();
+  const screen = document.getElementById('login-screen');
+  const setup = document.getElementById('login-setup');
+  if(!saved){
+    // No password set yet - show setup mode
+    setup.style.display='block';
+    document.querySelector('#login-screen .form-group input').placeholder='设置新密码';
+  }
+  screen.style.display='flex';
+  setTimeout(()=>document.getElementById('login-pw').focus(),100);
+}
+
+function doLogin(){
+  const pw = document.getElementById('login-pw').value;
+  const saved = getSavedPw();
+  const err = document.getElementById('login-err');
+  if(!pw){ err.textContent='请输入密码'; return; }
+  if(!saved){
+    err.textContent='请先设置密码（见下方）';
+    document.getElementById('login-setup').style.display='block';
+    return;
+  }
+  if(hashPw(pw) !== saved){
+    err.textContent='密码错误，请重试';
+    document.getElementById('login-pw').value='';
+    document.getElementById('login-pw').focus();
+    return;
+  }
+  // Login success
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('login-pw').value='';
+  err.textContent='';
+}
+
+function doSetPassword(){
+  const pw = document.getElementById('login-pw').value;
+  const pw2 = document.getElementById('login-pw2').value;
+  const err = document.getElementById('login-err');
+  if(!pw || pw.length<4){ err.textContent='密码至少4位'; return; }
+  if(pw !== pw2){ err.textContent='两次密码不一致'; return; }
+  localStorage.setItem(PW_KEY, hashPw(pw));
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('login-pw').value='';
+  document.getElementById('login-pw2').value='';
+  err.textContent='';
+  toast('✓ 密码设置成功');
+}
+
+function lockApp(){
+  document.getElementById('login-pw').value='';
+  document.getElementById('login-err').textContent='';
+  document.getElementById('login-screen').style.display='flex';
+  setTimeout(()=>document.getElementById('login-pw').focus(),100);
+}
+
+function doChangePw(){
+  const oldPw = document.getElementById('pw-old').value;
+  const newPw = document.getElementById('pw-new').value;
+  const newPw2 = document.getElementById('pw-new2').value;
+  const err = document.getElementById('pw-err');
+  const saved = getSavedPw();
+  if(!saved){ err.textContent='尚未设置密码'; return; }
+  if(hashPw(oldPw) !== saved){ err.textContent='当前密码错误'; return; }
+  if(!newPw || newPw.length<4){ err.textContent='新密码至少4位'; return; }
+  if(newPw !== newPw2){ err.textContent='两次新密码不一致'; return; }
+  localStorage.setItem(PW_KEY, hashPw(newPw));
+  closeModal('pw-modal');
+  document.getElementById('pw-old').value='';
+  document.getElementById('pw-new').value='';
+  document.getElementById('pw-new2').value='';
+  err.textContent='';
+  toast('✓ 密码已修改');
+}
+
 // ─── INIT ─────────────────────────────────────────
-initEntry();renderHome();initFirebase();
+initEntry();renderHome();initFirebase();initLogin();
 </script>
 </body>
 </html>
