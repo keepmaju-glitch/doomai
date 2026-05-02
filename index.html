@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v29</title>
+<title>提款记录管理 v30</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -561,8 +561,13 @@ function applyRemoteData(remote){
       ? Object.values(remote.data).filter(Boolean)
       : fbToArr(remote.data);
     if(remoteData.length){
-      // Use remote data directly - it's the authoritative source
-      data = remoteData.filter(r=>r&&r.date).sort((a,b)=>b.date.localeCompare(a.date));
+      // Merge remote data with HISTORY (remote takes priority)
+      data = [...HISTORY];
+      remoteData.filter(r=>r&&r.date).forEach(r=>{
+        const i = data.findIndex(d=>d.date===r.date);
+        if(i>=0) data[i]=r; else data.push(r);
+      });
+      data.sort((a,b)=>b.date.localeCompare(a.date));
     }
   }
   // Always update txs - use txsFromObj to handle Firebase object format
@@ -838,7 +843,7 @@ function initEntry(){
   document.getElementById('entry-time').value=now.toTimeString().slice(0,5);
   buildStoreInputs();
 }
-function saveEntry(){
+async function saveEntry(){
   const date=document.getElementById('entry-date').value;
   const time=document.getElementById('entry-time').value;
   if(!date){toast('⚠️ 请填写日期');return;}
@@ -989,7 +994,7 @@ function updateEditTotal(){
   document.getElementById('edit-total').textContent = fmtFull(total);
 }
 
-function saveEdit(){
+async function saveEdit(){
   const date = document.getElementById('edit-date').value;
   const time = document.getElementById('edit-time').value;
   if(!date){toast('⚠ 请填写日期');return;}
