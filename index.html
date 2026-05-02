@@ -10,9 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<!-- Firebase via REST API - no SDK needed -->
 <style>
 :root{
   --bg:#0f1117;--bg2:#181b24;--bg3:#1e2130;
@@ -404,27 +402,34 @@ const PALETTE=['#4f8ef7','#34c984','#f07a3a','#e05a9a','#a0c832','#f0c040','#9b6
 // ─── STATE ────────────────────────────────────────
 // ─── FIREBASE CONFIG ─────────────────────────────
 const FB_URL = "https://tikum-app-default-rtdb.asia-southeast1.firebasedatabase.app";
-let db = null;
 let fbReady = false;
 let saveTimer = null;
+let pollTimer = null;
+let lastRemoteT = 0;
 
-function initFirebaseSDK(){
-  try{
-    if(typeof firebase === 'undefined'){
-      console.error('Firebase SDK not loaded!');
-      setSyncStatus('red','⚠ Firebase SDK未加载');
-      return false;
-    }
-    if(!firebase.apps.length){
-      firebase.initializeApp({ databaseURL: FB_URL });
-    }
-    db = firebase.database();
-    return true;
-  } catch(e){
-    console.error('Firebase init error:', e);
-    setSyncStatus('red','⚠ Firebase初始化失败');
-    return false;
-  }
+// ── Firebase REST API helpers ─────────────────────
+async function fbGet(path){
+  const r = await fetch(FB_URL+path+'.json');
+  if(!r.ok) throw new Error('fbGet '+r.status);
+  return r.json();
+}
+async function fbSet(path, data){
+  const r = await fetch(FB_URL+path+'.json', {
+    method:'PUT',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if(!r.ok) throw new Error('fbSet '+r.status);
+  return r.json();
+}
+async function fbPatch(path, data){
+  const r = await fetch(FB_URL+path+'.json', {
+    method:'PATCH',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if(!r.ok) throw new Error('fbPatch '+r.status);
+  return r.json();
 }
 
 function setSyncStatus(state, msg){
@@ -460,20 +465,17 @@ function saveState(){
   saveLocalBackup();
   if(!fbReady) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{
+  saveTimer = setTimeout(async ()=>{
     setSyncStatus('saving','同步中...');
-    // Save stores & accounts & data separately from txs for reliability
-    const payload = {
-      stores: stores,
-      accounts: accounts,
-      data: data,
-      txs: txsToObj(txs),
-      _t: Date.now()
-    };
-    if(!db){console.warn('db not ready');return;}
-    db.ref('appdata').set(payload)
-      .then(()=>setSyncStatus('ok','✓ 已同步'))
-      .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
+    try{
+      const payload = { stores, accounts, data, txs:txsToObj(txs), _t:Date.now() };
+      await fbSet('/appdata', payload);
+      lastRemoteT = payload._t;
+      setSyncStatus('ok','✓ 已同步');
+    } catch(e){
+      setSyncStatus('red','同步失败');
+      console.error('saveState error:',e);
+    }
   }, 800);
 }
 
@@ -488,28 +490,19 @@ function txsFromObj(val){
   if(Array.isArray(val)) return val.filter(Boolean);
   return Object.values(val).filter(Boolean).sort((a,b)=>b.id-a.id);
 }
-function saveTxs(){
+async function saveTxs(){
   saveTxsLocal();
-  console.log('[saveTxs] fbReady='+fbReady+' txs='+JSON.stringify(txs));
-  if(fbReady){
-    setSyncStatus('saving','同步中...');
-    const txObj = txsToObj(txs);
-    console.log('[saveTxs] writing to Firebase:', JSON.stringify(txObj));
-    if(!db){console.warn('db not ready');return;}
-    db.ref('appdata/txs').set(txObj)
-      .then(()=>{ 
-        console.log('[saveTxs] SUCCESS');
-        setSyncStatus('ok','✓ 已同步'); 
-        saveLocalBackup(); 
-      })
-      .catch(e=>{ 
-        console.error('[saveTxs] FAILED:', e);
-        setSyncStatus('red','同步失败 - 请检查网络'); 
-      });
-    db.ref('appdata/_t').set(Date.now());
-  } else {
-    console.warn('[saveTxs] fbReady=false, not syncing');
-    setSyncStatus('red','⚠ 未连接Firebase');
+  if(!fbReady){ setSyncStatus('red','⚠ 未连接'); return; }
+  setSyncStatus('saving','同步中...');
+  try{
+    const t = Date.now();
+    await fbPatch('/appdata', { txs: txsToObj(txs), _t: t });
+    lastRemoteT = t;
+    setSyncStatus('ok','✓ 已同步');
+    saveLocalBackup();
+  } catch(e){
+    setSyncStatus('red','同步失败');
+    console.error('saveTxs error:',e);
   }
 }
 
@@ -544,27 +537,49 @@ function rerenderAll(){
   renderRecords();
 }
 
-function initFirebase(){
-  if(!initFirebaseSDK()){
-    // Retry after 2 seconds
-    setTimeout(initFirebase, 2000);
-    return;
-  }
+async function initFirebase(){
   setSyncStatus('saving','连接中...');
-  // Single listener on entire appdata node
-  db.ref('appdata').on('value', snap=>{
-    const remote = snap.val();
+  try{
+    const remote = await fbGet('/appdata');
     applyRemoteData(remote);
     fbReady = true;
     setSyncStatus('ok','✓ 已连接');
     rerenderAll();
     const activePage = document.querySelector('.page.active');
     if(activePage && activePage.id==='page-chart') renderCharts();
-  }, err=>{
+    // Start polling for remote changes every 5 seconds
+    startPolling();
+  } catch(e){
     fbReady = false;
     setSyncStatus('red','⚠ 离线模式');
-    console.error('Firebase error:', err);
-  });
+    console.error('Firebase connect error:', e);
+    // Retry in 5 seconds
+    setTimeout(initFirebase, 5000);
+  }
+}
+
+function startPolling(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async ()=>{
+    try{
+      const remoteT = await fbGet('/appdata/_t');
+      if(remoteT && remoteT > lastRemoteT){
+        // Remote data changed, fetch and apply
+        const remote = await fbGet('/appdata');
+        applyRemoteData(remote);
+        lastRemoteT = remoteT;
+        renderBalance();
+        renderHome();
+        const activePage = document.querySelector('.page.active');
+        if(activePage){
+          const pid = activePage.id.replace('page-','');
+          if(pid==='records') renderRecords();
+          if(pid==='chart') renderCharts();
+        }
+        setSyncStatus('ok','✓ 已同步');
+      }
+    } catch(e){ console.log('Poll error:', e); }
+  }, 5000);
 }
 
 // Default stores
@@ -1330,56 +1345,39 @@ function debugFirebase(){
   lines.push('\n正在读取Firebase...');
   toast('正在检查Firebase...');
   
-  db.ref('appdata').once('value').then(snap=>{
-    const val = snap.val();
+  fbGet('/appdata').then(val=>{
     if(!val){
       lines.push('Firebase appdata: NULL (空)');
-      alert(lines.join('\n') + '\n\nFirebase无数据！需要先在App里录入数据触发同步。');
+      alert(lines.join('\n') + '\n\nFirebase无数据！录入一条提款记录触发同步。');
       return;
     }
-    lines.push('Firebase appdata存在: ✓');
+    lines.push('Firebase appdata: ✓ 有数据');
     lines.push('Firebase txs: ' + JSON.stringify(val.txs).slice(0,100));
-    lines.push('Firebase accounts count: ' + (val.accounts ? Object.keys(val.accounts||{}).length : 0));
-    lines.push('Firebase data count: ' + (val.data ? Object.keys(val.data||{}).length : 0));
+    lines.push('lastRemoteT: ' + lastRemoteT);
     alert(lines.join('\n'));
   }).catch(e=>{
-    alert('Firebase读取失败!\n' + e.message + '\n\n请检查网络和Firebase规则设置。');
+    alert('Firebase读取失败!\n' + e.message + '\n\n请检查网络。');
   });
 }
 
 // ─── REFRESH ─────────────────────────────────────
-function refreshData(){
+async function refreshData(){
   const icon = document.getElementById('refresh-icon');
   if(icon) icon.style.animation='spin 0.8s linear infinite';
   setSyncStatus('saving','刷新中...');
-  db.ref('appdata').once('value').then(snap=>{
-    const remote = snap.val();
-    if(remote){
-      if(remote.stores && remote.stores.length) stores = remote.stores;
-      if(remote.accounts && remote.accounts.length){
-        accounts = remote.accounts;
-        accounts.forEach(a=>{if(!a.storeMapping)a.storeMapping=[];});
-      }
-      if(remote.data && remote.data.length){
-        data = [...HISTORY];
-        remote.data.forEach(r=>{
-          const i=data.findIndex(d=>d.date===r.date);
-          if(i>=0)data[i]=r; else data.push(r);
-        });
-        data.sort((a,b)=>b.date.localeCompare(a.date));
-      }
-      if(remote.txs) txs = Array.isArray(remote.txs) ? remote.txs : Object.values(remote.txs);
-      saveLocalBackup(); saveTxsLocal();
-    }
+  try{
+    const remote = await fbGet('/appdata');
+    applyRemoteData(remote);
+    if(remote && remote._t) lastRemoteT = remote._t;
     if(icon) icon.style.animation='';
     setSyncStatus('ok','✓ 已刷新');
-    renderBalance(); renderHome(); buildStoreInputs();
+    rerenderAll(); buildStoreInputs();
     toast('✓ 数据已刷新');
-  }).catch(e=>{
+  } catch(e){
     if(icon) icon.style.animation='';
     setSyncStatus('red','刷新失败');
     toast('⚠ 刷新失败，请检查网络');
-  });
+  }
 }
 
 // ─── INIT ─────────────────────────────────────────
