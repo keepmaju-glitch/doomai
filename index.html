@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v12</title>
+<title>提款记录管理 v18</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -305,7 +305,8 @@ select:focus{border-color:var(--accent);}
         <div class="header-title">账户余额</div>
         <div class="header-sub">实时余额统计</div>
       </div>
-      <button onclick="debugFirebase()" style="background:none;border:1px solid #f59e0b;border-radius:8px;padding:5px 10px;cursor:pointer;color:#f59e0b;font-size:11px;margin-bottom:8px;width:100%;">🔍 调试Firebase连接</button>
+      <button onclick="debugFirebase()" style="background:none;border:1px solid #f59e0b;border-radius:8px;padding:5px 10px;cursor:pointer;color:#f59e0b;font-size:11px;margin-bottom:4px;width:100%;">🔍 调试Firebase连接</button>
+  <button onclick="forceSyncAll()" style="background:none;border:1px solid #22c55e;border-radius:8px;padding:5px 10px;cursor:pointer;color:#22c55e;font-size:11px;margin-bottom:8px;width:100%;">☁ 强制同步所有数据到云端</button>
   <button onclick="refreshData()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:5px;font-size:12px;" title="刷新同步">
         <svg id="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         刷新
@@ -1327,7 +1328,7 @@ function openTxModal(acctId){
   openModal('tx-modal');
 }
 
-function saveTx(){
+async function saveTx(){
   const acctId = parseInt(document.getElementById('tx-acct').value);
   const date = document.getElementById('tx-date').value;
   const time = document.getElementById('tx-time').value;
@@ -1338,18 +1339,18 @@ function saveTx(){
   if(!acctId){ toast('⚠️ 请选择账户'); return; }
   txs.push({ id: Date.now(), acctId, type: txEditType, date, time, amount, note });
   txs.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
-  saveTxs();
   closeModal('tx-modal');
   renderBalance();
   toast(txEditType==='out' ? '✓ 支出已记录' : '✓ 收入已记录');
+  await saveTxs();
 }
 
-function delTx(id){
+async function delTx(id){
   if(!confirm('确认删除此交易记录？')) return;
   txs = txs.filter(t => t.id !== id);
-  saveTxs();
   renderBalance();
   toast('已删除');
+  await saveTxs();
 }
 
 // Helper: compute net transactions for an account
@@ -1385,6 +1386,41 @@ async function debugFirebase(){
     alert(lines.join('\n'));
   } catch(e){
     alert(lines.join('\n') + '\n\nFirebase读取失败: ' + e.message + '\n请检查网络连接');
+  }
+}
+
+// ─── FORCE SYNC ──────────────────────────────────
+async function forceSyncAll(){
+  if(!fbReady){ toast('⚠ Firebase未连接'); return; }
+  setSyncStatus('saving','强制同步中...');
+  try{
+    const t = Date.now();
+    const txObj = {};
+    (txs||[]).forEach(tx=>{ if(tx&&tx.id) txObj['t'+tx.id]=tx; });
+    const payload = {
+      stores: stores,
+      accounts: accounts,
+      data: data,
+      txs: Object.keys(txObj).length>0 ? txObj : {placeholder:'none'},
+      _t: t
+    };
+    const r = await fetch(FB_URL+'/appdata.json',{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if(!r.ok){
+      const txt = await r.text().catch(()=>'');
+      throw new Error('HTTP '+r.status+': '+txt.slice(0,100));
+    }
+    lastRemoteT = t;
+    saveLocalBackup();
+    setSyncStatus('ok','✓ 强制同步完成');
+    toast('✓ 所有数据已同步到云端！');
+  } catch(e){
+    setSyncStatus('red','同步失败');
+    toast('⚠ 同步失败: '+e.message);
+    console.error('forceSyncAll error:',e);
   }
 }
 
