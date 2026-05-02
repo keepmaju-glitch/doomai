@@ -404,10 +404,28 @@ const PALETTE=['#4f8ef7','#34c984','#f07a3a','#e05a9a','#a0c832','#f0c040','#9b6
 // ─── STATE ────────────────────────────────────────
 // ─── FIREBASE CONFIG ─────────────────────────────
 const FB_URL = "https://tikum-app-default-rtdb.asia-southeast1.firebasedatabase.app";
-firebase.initializeApp({ databaseURL: FB_URL });
-const db = firebase.database();
+let db = null;
 let fbReady = false;
 let saveTimer = null;
+
+function initFirebaseSDK(){
+  try{
+    if(typeof firebase === 'undefined'){
+      console.error('Firebase SDK not loaded!');
+      setSyncStatus('red','⚠ Firebase SDK未加载');
+      return false;
+    }
+    if(!firebase.apps.length){
+      firebase.initializeApp({ databaseURL: FB_URL });
+    }
+    db = firebase.database();
+    return true;
+  } catch(e){
+    console.error('Firebase init error:', e);
+    setSyncStatus('red','⚠ Firebase初始化失败');
+    return false;
+  }
+}
 
 function setSyncStatus(state, msg){
   const bar = document.getElementById('sync-bar');
@@ -452,6 +470,7 @@ function saveState(){
       txs: txsToObj(txs),
       _t: Date.now()
     };
+    if(!db){console.warn('db not ready');return;}
     db.ref('appdata').set(payload)
       .then(()=>setSyncStatus('ok','✓ 已同步'))
       .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
@@ -476,6 +495,7 @@ function saveTxs(){
     setSyncStatus('saving','同步中...');
     const txObj = txsToObj(txs);
     console.log('[saveTxs] writing to Firebase:', JSON.stringify(txObj));
+    if(!db){console.warn('db not ready');return;}
     db.ref('appdata/txs').set(txObj)
       .then(()=>{ 
         console.log('[saveTxs] SUCCESS');
@@ -525,6 +545,11 @@ function rerenderAll(){
 }
 
 function initFirebase(){
+  if(!initFirebaseSDK()){
+    // Retry after 2 seconds
+    setTimeout(initFirebase, 2000);
+    return;
+  }
   setSyncStatus('saving','连接中...');
   // Single listener on entire appdata node
   db.ref('appdata').on('value', snap=>{
@@ -1297,7 +1322,9 @@ function debugFirebase(){
   lines.push('fbReady: ' + fbReady);
   lines.push('txs count: ' + txs.length);
   lines.push('accounts count: ' + accounts.length);
-  lines.push('FB URL: ' + (typeof FB_URL !== "undefined" ? FB_URL.slice(0,40)+'...' : 'NOT SET'));
+  lines.push('FB URL: tikum-app-default-rtdb...');
+  lines.push('firebase SDK: ' + (typeof firebase !== 'undefined' ? '✓ 已加载' : '✗ 未加载'));
+  lines.push('db ready: ' + (db ? '✓' : '✗'));
   
   // Try to read txs from Firebase right now
   lines.push('\n正在读取Firebase...');
