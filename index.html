@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理</title>
+<title>提款记录管理 v12</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -306,7 +306,8 @@ select:focus{border-color:var(--accent);}
         <div class="header-title">账户余额</div>
         <div class="header-sub">实时余额统计</div>
       </div>
-      <button onclick="refreshData()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:5px;font-size:12px;" title="刷新同步">
+      <button onclick="debugFirebase()" style="background:none;border:1px solid #f59e0b;border-radius:8px;padding:5px 10px;cursor:pointer;color:#f59e0b;font-size:11px;margin-bottom:8px;width:100%;">🔍 调试Firebase连接</button>
+  <button onclick="refreshData()" style="background:none;border:1px solid var(--border2);border-radius:8px;padding:7px 10px;cursor:pointer;color:var(--text2);display:flex;align-items:center;gap:5px;font-size:12px;" title="刷新同步">
         <svg id="refresh-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         刷新
       </button>
@@ -470,13 +471,25 @@ function txsFromObj(val){
 }
 function saveTxs(){
   saveTxsLocal();
+  console.log('[saveTxs] fbReady='+fbReady+' txs='+JSON.stringify(txs));
   if(fbReady){
     setSyncStatus('saving','同步中...');
     const txObj = txsToObj(txs);
+    console.log('[saveTxs] writing to Firebase:', JSON.stringify(txObj));
     db.ref('appdata/txs').set(txObj)
-      .then(()=>{ setSyncStatus('ok','✓ 已同步'); saveLocalBackup(); })
-      .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
+      .then(()=>{ 
+        console.log('[saveTxs] SUCCESS');
+        setSyncStatus('ok','✓ 已同步'); 
+        saveLocalBackup(); 
+      })
+      .catch(e=>{ 
+        console.error('[saveTxs] FAILED:', e);
+        setSyncStatus('red','同步失败 - 请检查网络'); 
+      });
     db.ref('appdata/_t').set(Date.now());
+  } else {
+    console.warn('[saveTxs] fbReady=false, not syncing');
+    setSyncStatus('red','⚠ 未连接Firebase');
   }
 }
 
@@ -1276,6 +1289,35 @@ function acctTxOut(acctId){
 }
 function acctTxIn(acctId){
   return txs.filter(t=>t.acctId===acctId&&t.type==='in').reduce((s,t)=>s+t.amount,0);
+}
+
+// ─── DEBUG ───────────────────────────────────────
+function debugFirebase(){
+  const lines = [];
+  lines.push('fbReady: ' + fbReady);
+  lines.push('txs count: ' + txs.length);
+  lines.push('accounts count: ' + accounts.length);
+  lines.push('FB URL: ' + (typeof FB_URL !== "undefined" ? FB_URL.slice(0,40)+'...' : 'NOT SET'));
+  
+  // Try to read txs from Firebase right now
+  lines.push('\n正在读取Firebase...');
+  toast('正在检查Firebase...');
+  
+  db.ref('appdata').once('value').then(snap=>{
+    const val = snap.val();
+    if(!val){
+      lines.push('Firebase appdata: NULL (空)');
+      alert(lines.join('\n') + '\n\nFirebase无数据！需要先在App里录入数据触发同步。');
+      return;
+    }
+    lines.push('Firebase appdata存在: ✓');
+    lines.push('Firebase txs: ' + JSON.stringify(val.txs).slice(0,100));
+    lines.push('Firebase accounts count: ' + (val.accounts ? Object.keys(val.accounts||{}).length : 0));
+    lines.push('Firebase data count: ' + (val.data ? Object.keys(val.data||{}).length : 0));
+    alert(lines.join('\n'));
+  }).catch(e=>{
+    alert('Firebase读取失败!\n' + e.message + '\n\n请检查网络和Firebase规则设置。');
+  });
 }
 
 // ─── REFRESH ─────────────────────────────────────
