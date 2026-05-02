@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v22</title>
+<title>提款记录管理 v23</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -471,17 +471,12 @@ function saveState(){
     setSyncStatus('saving','同步中...');
     try{
       const t = Date.now();
-      const txObj = {};
-      (txs||[]).forEach(tx=>{ if(tx&&tx.id) txObj['t'+tx.id]=tx; });
-      const payload = {
-        stores, accounts, data,
-        txs: Object.keys(txObj).length>0 ? txObj : {placeholder:'none'},
-        _t: t
-      };
+      // IMPORTANT: saveState does NOT write txs - txs is managed by saveTxs() separately
+      // This prevents saveState from overwriting txs changes made by other devices
       const r = await fetch(FB_URL+'/appdata.json',{
-        method:'PUT',
+        method:'PATCH',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload)
+        body:JSON.stringify({ stores, accounts, data, _t: t })
       });
       if(!r.ok) throw new Error('HTTP '+r.status);
       lastRemoteT = t;
@@ -561,8 +556,12 @@ function applyRemoteData(remote){
     data.sort((a,b)=>b.date.localeCompare(a.date));
   }
   // Always update txs - use txsFromObj to handle Firebase object format
-  const rawTxs = txsFromObj(remote.txs);
-  txs = rawTxs.filter(t=>t && t.id && t.amount); // filter out placeholder
+  if(remote.txs){
+    const rawTxs = txsFromObj(remote.txs);
+    const filtered = rawTxs.filter(t=>t && t.id && t.amount);
+    // Only update txs if remote has actual data or more items than local
+    if(filtered.length > 0 || txs.length === 0) txs = filtered;
+  }
   saveTxsLocal();
   saveLocalBackup();
 }
@@ -1447,7 +1446,7 @@ async function forceSyncAll(){
       stores: stores,
       accounts: accounts,
       data: data,
-      txs: Object.keys(txObj).length>0 ? txObj : {placeholder:'none'},
+      txs: Object.keys(txObj).length>0 ? txObj : null,
       _t: t
     };
     const r = await fetch(FB_URL+'/appdata.json',{
