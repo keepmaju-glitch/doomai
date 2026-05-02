@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v27</title>
+<title>提款记录管理 v28</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -895,9 +895,24 @@ function saveEntry(){
   const idx=data.findIndex(d=>d.date===date);
   if(idx>=0)data[idx]=entry;else data.push(entry);
   data.sort((a,b)=>b.date.localeCompare(a.date));
-  saveState();
+  saveLocalBackup();
   stores.forEach((_,i)=>{if(document.getElementById('si-'+i))document.getElementById('si-'+i).value='';});
   calcTotal();toast('✓ 记录已保存');
+  // Write to Firebase immediately
+  if(fbReady){
+    setSyncStatus('saving','同步中...');
+    (async()=>{
+      try{
+        const dataObj={};
+        data.forEach(d=>{if(d&&d.date)dataObj['d'+d.date.replace(/-/g,'')]=d;});
+        const t=Date.now();
+        await fetch(FB_URL+'/appdata/data.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataObj)});
+        await fetch(FB_URL+'/appdata/_t.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});
+        lastRemoteT=t;
+        setSyncStatus('ok','✓ 已同步');
+      }catch(e){setSyncStatus('red','同步失败');console.error(e);}
+    })();
+  }
 }
 
 // ─── HOME ─────────────────────────────────────────
@@ -973,9 +988,24 @@ function renderRecords(){
       }).join('')}</div></div>`;
     }).join('')+'</div>';
 }
-function delRec(date){
+async function delRec(date){
   if(!confirm('确认删除 '+date+' 的记录？'))return;
-  data=data.filter(d=>d.date!==date);saveState();renderRecords();renderHome();toast('已删除');
+  data=data.filter(d=>d.date!==date);
+  saveLocalBackup();
+  renderRecords();renderHome();toast('已删除');
+  // Write immediately to Firebase - no debounce to avoid race with polling
+  if(fbReady){
+    setSyncStatus('saving','同步中...');
+    try{
+      const dataObj={};
+      data.forEach(d=>{if(d&&d.date)dataObj['d'+d.date.replace(/-/g,'')]=d;});
+      const t=Date.now();
+      await fetch(FB_URL+'/appdata/data.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataObj)});
+      await fetch(FB_URL+'/appdata/_t.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});
+      lastRemoteT=t;
+      setSyncStatus('ok','✓ 已删除并同步');
+    }catch(e){setSyncStatus('red','删除同步失败');console.error(e);}
+  }
 }
 
 // ─── EDIT RECORD ─────────────────────────────────
@@ -1026,12 +1056,22 @@ function saveEdit(){
     data.push({date,time,stores:newStores,total});
   }
   data.sort((a,b)=>b.date.localeCompare(a.date));
-  saveState();
+  saveLocalBackup();
   closeModal('edit-modal');
-  renderRecords();
-  renderHome();
-  renderBalance();
+  renderRecords();renderHome();renderBalance();
   toast('✓ 记录已更新');
+  if(fbReady){
+    setSyncStatus('saving','同步中...');
+    try{
+      const dataObj={};
+      data.forEach(d=>{if(d&&d.date)dataObj['d'+d.date.replace(/-/g,'')]=d;});
+      const t=Date.now();
+      await fetch(FB_URL+'/appdata/data.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(dataObj)});
+      await fetch(FB_URL+'/appdata/_t.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});
+      lastRemoteT=t;
+      setSyncStatus('ok','✓ 已同步');
+    }catch(e){setSyncStatus('red','同步失败');console.error(e);}
+  }
 }
 
 // ─── BALANCE ─────────────────────────────────────
