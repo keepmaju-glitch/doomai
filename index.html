@@ -448,7 +448,7 @@ function saveState(){
       stores: stores,
       accounts: accounts,
       data: data,
-      txs: txs||[],
+      txs: txsToObj(txs),
       _t: Date.now()
     };
     db.ref('appdata').set(payload)
@@ -457,15 +457,25 @@ function saveState(){
   }, 800);
 }
 
+function txsToObj(arr){
+  // Convert txs array to object keyed by id for Firebase storage
+  const obj={};
+  (arr||[]).forEach(t=>{ if(t&&t.id) obj['t'+t.id]=t; });
+  return Object.keys(obj).length ? obj : null;
+}
+function txsFromObj(val){
+  if(!val) return [];
+  if(Array.isArray(val)) return val.filter(Boolean);
+  return Object.values(val).filter(Boolean).sort((a,b)=>b.id-a.id);
+}
 function saveTxs(){
   saveTxsLocal();
-  // Write txs directly to its own node immediately (no debounce)
   if(fbReady){
     setSyncStatus('saving','同步中...');
-    db.ref('appdata/txs').set(txs||[])
+    const txObj = txsToObj(txs);
+    db.ref('appdata/txs').set(txObj)
       .then(()=>{ setSyncStatus('ok','✓ 已同步'); saveLocalBackup(); })
       .catch(e=>{ setSyncStatus('red','同步失败'); console.error(e); });
-    // Also update timestamp
     db.ref('appdata/_t').set(Date.now());
   }
 }
@@ -488,9 +498,8 @@ function applyRemoteData(remote){
     });
     data.sort((a,b)=>b.date.localeCompare(a.date));
   }
-  // Always update txs - this is the key fix
-  const remoteTxs = fbToArr(remote.txs);
-  txs = remoteTxs;
+  // Always update txs - use txsFromObj to handle Firebase object format
+  txs = txsFromObj(remote.txs);
   saveTxsLocal();
   saveLocalBackup();
 }
