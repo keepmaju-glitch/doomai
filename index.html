@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="提款记录">
-<title>提款记录管理 v21</title>
+<title>提款记录管理 v22</title>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <!-- SheetJS for Excel import/export -->
@@ -606,19 +606,25 @@ async function initFirebase(){
 
 function startPolling(){
   clearInterval(pollTimer);
-  let lastTxsHash = JSON.stringify(txs||[]);
+  let lastTxsHash = '';
+  let lastDataCount = 0;
   pollTimer = setInterval(async ()=>{
     try{
-      // Fetch txs directly - compare content, not timestamp
+      // Always fetch txs and compare - most reliable approach
       const remoteTxsRaw = await fbGet('/appdata/txs');
-      const remoteTxsArr = remoteTxsRaw ? 
-        (Array.isArray(remoteTxsRaw) ? remoteTxsRaw : Object.values(remoteTxsRaw)).filter(t=>t&&t.id&&t.amount) 
+      const remoteTxsArr = remoteTxsRaw ?
+        Object.values(remoteTxsRaw).filter(t=>t&&t.id&&t.amount)
         : [];
-      const newHash = JSON.stringify(remoteTxsArr.sort((a,b)=>b.id-a.id));
-      if(newHash !== lastTxsHash){
-        console.log('[poll] txs changed! fetching all data...');
+      // Also check record count for withdrawal sync
+      const remoteDataRaw = await fbGet('/appdata/data');
+      const remoteDataCount = remoteDataRaw ? Object.keys(remoteDataRaw).length : 0;
+      
+      const newHash = remoteTxsArr.map(t=>t.id+':'+t.amount).sort().join('|');
+      
+      if(newHash !== lastTxsHash || remoteDataCount !== lastDataCount){
         lastTxsHash = newHash;
-        // Fetch full data
+        lastDataCount = remoteDataCount;
+        // Fetch full data and apply
         const remote = await fbGet('/appdata');
         if(remote && remote._t) lastRemoteT = remote._t;
         applyRemoteData(remote);
@@ -634,7 +640,7 @@ function startPolling(){
         toast('✓ 数据已更新');
       }
     } catch(e){ console.log('Poll error:', e.message); }
-  }, 3000);
+  }, 4000);
 }
 
 // Default stores
@@ -1359,12 +1365,30 @@ async function saveTx(){
   if(!date){ toast('⚠️ 请填写日期'); return; }
   if(amount<=0){ toast('⚠️ 请填写金额'); return; }
   if(!acctId){ toast('⚠️ 请选择账户'); return; }
-  txs.push({ id: Date.now(), acctId, type: txEditType, date, time, amount, note });
+  const newTx = { id: Date.now(), acctId, type: txEditType, date, time, amount, note };
+  txs.push(newTx);
   txs.sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+  saveTxsLocal();
   closeModal('tx-modal');
   renderBalance();
   toast(txEditType==='out' ? '✓ 支出已记录' : '✓ 收入已记录');
-  await saveTxs();
+  // Direct Firebase write - bypass all debounce
+  if(fbReady){
+    setSyncStatus('saving','同步中...');
+    try{
+      const txObj = {};
+      txs.forEach(tx=>{ if(tx&&tx.id) txObj['t'+tx.id]=tx; });
+      const t = Date.now();
+      await fetch(FB_URL+'/appdata/txs.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(txObj)});
+      await fetch(FB_URL+'/appdata/_t.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});
+      lastRemoteT = t;
+      setSyncStatus('ok','✓ 已同步');
+      saveLocalBackup();
+    } catch(e){
+      setSyncStatus('red','同步失败:'+e.message);
+      console.error('saveTx sync error:',e);
+    }
+  }
 }
 
 async function delTx(id){
